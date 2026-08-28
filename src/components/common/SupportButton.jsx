@@ -2,7 +2,7 @@ import React from 'react';
 import { LifeBuoy } from 'lucide-react';
 
 // TODO: point this at a real, monitored support inbox before launch.
-const SUPPORT_EMAIL = 'suporte@lovevibe.app';
+const SUPPORT_EMAIL = 'suporte@lovevibe.com.br';
 
 export const SupportButton = ({ className = '' }) => (
   <a

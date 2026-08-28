@@ -115,7 +115,7 @@ export const AuthModal = () => {
       }
     } else {
       if (!regName) {
-        setErrorMsg('Por favor, preencha o seu Nome Completo.');
+        setErrorMsg('Por favor, preencha seu Nome ou Apelido.');
         return;
       }
       if (!regBirthDate) {
@@ -503,12 +503,12 @@ export const AuthModal = () => {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">Nome Completo</label>
+                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">Nome ou Apelido</label>
                     <input
                       type="text"
                       value={regName}
                       onChange={(e) => setRegName(stripEmojis(e.target.value))}
-                      placeholder="Seu Nome"
+                      placeholder="Seu nome ou apelido"
                       className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2 px-3 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                     />
                   </div>
