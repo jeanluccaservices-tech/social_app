@@ -27,13 +27,14 @@ const mapPost = (p) => ({
 });
 
 export const SocialProvider = ({ children }) => {
-  const { currentUser, users } = useAuth();
+  const { currentUser, users, fetchUsers: refetchUsers } = useAuth();
 
   const [rawPosts, setRawPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(true);
 
   const [friendships, setFriendships] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [blockedUsers, setBlockedUsers] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(true);
 
   const [notifications, setNotifications] = useState([]);
@@ -56,48 +57,57 @@ export const SocialProvider = ({ children }) => {
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
-  useEffect(() => {
-    let active = true;
-
-    const fetchContacts = async () => {
-      if (!currentUser) {
-        setFriendships([]);
-        setMessages([]);
-        setContactsLoading(false);
-        return;
-      }
-      setContactsLoading(true);
-
-      const [{ data: friendshipRows }, { data: messageRows }] = await Promise.all([
-        supabase.from('friendships').select('*'),
-        supabase.from('messages').select('*').order('created_at', { ascending: true })
-      ]);
-
-      if (!active) return;
-
-      setFriendships((friendshipRows || []).map(f => ({
-        id: f.id,
-        userId1: f.user_id_1,
-        userId2: f.user_id_2,
-        status: f.status,
-        requesterId: f.requester_id
-      })));
-
-      setMessages((messageRows || []).map(m => ({
-        id: m.id,
-        senderId: m.sender_id,
-        receiverId: m.receiver_id,
-        text: m.text || '',
-        mediaUrl: m.media_url || '',
-        timestamp: formatClockTime(m.created_at)
-      })));
-
+  const fetchContacts = useCallback(async () => {
+    if (!currentUser) {
+      setFriendships([]);
+      setMessages([]);
+      setBlockedUsers([]);
       setContactsLoading(false);
-    };
+      return;
+    }
 
+    const [{ data: friendshipRows }, { data: messageRows }, { data: blockedRows }] = await Promise.all([
+      supabase.from('friendships').select('*'),
+      supabase.from('messages').select('*').order('created_at', { ascending: true }),
+      supabase.from('blocked_users').select('*')
+    ]);
+
+    setFriendships((friendshipRows || []).map(f => ({
+      id: f.id,
+      userId1: f.user_id_1,
+      userId2: f.user_id_2,
+      status: f.status,
+      requesterId: f.requester_id
+    })));
+
+    setMessages((messageRows || []).map(m => ({
+      id: m.id,
+      senderId: m.sender_id,
+      receiverId: m.receiver_id,
+      text: m.text || '',
+      mediaUrl: m.media_url || '',
+      readAt: m.read_at,
+      timestamp: formatClockTime(m.created_at)
+    })));
+
+    setBlockedUsers((blockedRows || []).map(b => b.blocked_id));
+
+    setContactsLoading(false);
+  }, [currentUser]);
+
+  useEffect(() => {
+    setContactsLoading(true);
     fetchContacts();
-    return () => { active = false; };
-  }, [currentUser?.id]);
+  }, [fetchContacts]);
+
+  // Light polling instead of a full realtime subscription — same tradeoff
+  // as notifications below: good enough to surface new messages without
+  // websocket infrastructure.
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(fetchContacts, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser, fetchContacts]);
 
   // --- NOTIFICATIONS ---
   // Likes/comments on my posts, and friend requests I've received or that
@@ -191,38 +201,76 @@ export const SocialProvider = ({ children }) => {
   };
 
   const sendFriendRequest = async (targetUserId) => {
-    if (!currentUser) return;
-    if (getFriendshipStatus(targetUserId) !== 'NONE') return;
+    if (!currentUser) return { success: false, message: 'Faça login para enviar convites.' };
+
+    const status = getFriendshipStatus(targetUserId);
+    if (status === 'SENT') return { success: false, message: 'Você já enviou um convite para essa pessoa.' };
+    if (status === 'ACCEPTED') return { success: false, message: 'Vocês já são amigos.' };
+    if (status === 'RECEIVED') return { success: false, message: 'Essa pessoa já te enviou um convite — veja na aba Convites.' };
+    if (status !== 'NONE') return { success: false, message: 'Não foi possível enviar o convite.' };
 
     const { data, error } = await supabase
       .from('friendships')
       .insert({ user_id_1: currentUser.id, user_id_2: targetUserId, status: 'PENDING', requester_id: currentUser.id })
       .select()
       .single();
-    if (error) return;
+    if (error) return { success: false, message: 'Não foi possível enviar o convite. Tente novamente.' };
 
     setFriendships(prev => [...prev, {
       id: data.id, userId1: data.user_id_1, userId2: data.user_id_2, status: data.status, requesterId: data.requester_id
     }]);
+    return { success: true };
   };
 
   const acceptFriendRequest = async (targetUserId) => {
     const row = findFriendshipRow(targetUserId);
-    if (!row) return;
+    if (!row) return { success: false, message: 'Convite não encontrado.' };
     const { error } = await supabase.from('friendships').update({ status: 'ACCEPTED' }).eq('id', row.id);
-    if (error) return;
+    if (error) return { success: false, message: 'Não foi possível aceitar o convite. Tente novamente.' };
     setFriendships(prev => prev.map(f => f.id === row.id ? { ...f, status: 'ACCEPTED' } : f));
+    return { success: true };
   };
 
   const rejectFriendRequest = async (targetUserId) => {
     const row = findFriendshipRow(targetUserId);
-    if (!row) return;
+    if (!row) return { success: false, message: 'Convite não encontrado.' };
     const { error } = await supabase.from('friendships').delete().eq('id', row.id);
-    if (error) return;
+    if (error) return { success: false, message: 'Não foi possível concluir a ação. Tente novamente.' };
     setFriendships(prev => prev.filter(f => f.id !== row.id));
+    return { success: true };
   };
 
   const removeFriend = (targetUserId) => rejectFriendRequest(targetUserId);
+
+  // --- BLOCKING ---
+  // Blocking hides the other person's profile, posts and comments from
+  // each other everywhere in the app (enforced by RLS) and stops new
+  // messages between them — both happen server-side, this just keeps the
+  // local block list in sync so the UI (e.g. a "Bloquear" -> "Desbloquear"
+  // toggle) can reflect it immediately.
+  const isBlocked = (targetUserId) => blockedUsers.includes(targetUserId);
+
+  const blockUser = async (targetUserId) => {
+    if (!currentUser || !targetUserId || targetUserId === currentUser.id) return false;
+    const { error } = await supabase.rpc('block_user', { target_user_id: targetUserId });
+    if (error) return false;
+    setBlockedUsers(prev => prev.includes(targetUserId) ? prev : [...prev, targetUserId]);
+    setFriendships(prev => prev.filter(f =>
+      !((f.userId1 === currentUser.id && f.userId2 === targetUserId) ||
+        (f.userId1 === targetUserId && f.userId2 === currentUser.id))
+    ));
+    refetchUsers(); // blocked profile drops out of RLS's view immediately
+    return true;
+  };
+
+  const unblockUser = async (targetUserId) => {
+    if (!currentUser || !targetUserId) return false;
+    const { error } = await supabase.rpc('unblock_user', { target_user_id: targetUserId });
+    if (error) return false;
+    setBlockedUsers(prev => prev.filter(id => id !== targetUserId));
+    refetchUsers(); // the unblocked profile becomes visible again via RLS
+    return true;
+  };
 
   // --- CHAT PERMISSION LOGIC ---
   // Only PRO members can start a new DM thread. A non-PRO member can still
@@ -253,25 +301,46 @@ export const SocialProvider = ({ children }) => {
 
     setMessages(prev => [...prev, {
       id: data.id, senderId: data.sender_id, receiverId: data.receiver_id,
-      text: data.text || '', mediaUrl: data.media_url || '', timestamp: formatClockTime(data.created_at)
+      text: data.text || '', mediaUrl: data.media_url || '', readAt: data.read_at,
+      timestamp: formatClockTime(data.created_at)
     }]);
     return true;
   };
 
+  const unreadMessageCount = currentUser
+    ? messages.filter(m => m.receiverId === currentUser.id && !m.readAt).length
+    : 0;
+
+  // Marks every unread message from one sender as read — called when their
+  // conversation is opened in the chat view.
+  const markMessagesRead = async (senderId) => {
+    if (!currentUser || !senderId) return;
+    const idsToMark = messages
+      .filter(m => m.senderId === senderId && m.receiverId === currentUser.id && !m.readAt)
+      .map(m => m.id);
+    if (idsToMark.length === 0) return;
+
+    const nowIso = new Date().toISOString();
+    const idSet = new Set(idsToMark);
+    setMessages(prev => prev.map(m => idSet.has(m.id) ? { ...m, readAt: nowIso } : m));
+    await supabase.from('messages').update({ read_at: nowIso }).in('id', idsToMark).is('read_at', null);
+  };
+
   // --- POSTS HANDLERS ---
   const createPost = async ({ type, content, mediaUrl }) => {
-    if (!currentUser) return;
+    if (!currentUser) return { success: false, message: 'Faça login para publicar.' };
     const { data, error } = await supabase
       .from('posts')
       .insert({ user_id: currentUser.id, type: type || 'text', content, media_url: mediaUrl || null })
       .select()
       .single();
-    if (error) return;
+    if (error) return { success: false, message: 'Não foi possível publicar. Tente novamente.' };
 
     setRawPosts(prev => [{
       id: data.id, userId: data.user_id, type: data.type, content: data.content,
       mediaUrl: data.media_url, createdAtRaw: data.created_at, likes: [], comments: []
     }, ...prev]);
+    return { success: true };
   };
 
   const toggleLikePost = async (postId) => {
@@ -318,13 +387,17 @@ export const SocialProvider = ({ children }) => {
   // image, that file gets moved into a separate `deleted/` storage prefix
   // instead of staying mixed in with everyone's active media.
   const deletePost = async (postId) => {
-    if (!currentUser) return;
+    if (!currentUser) return { success: false, message: 'Faça login para continuar.' };
     const post = rawPosts.find(p => p.id === postId);
-    if (!post || post.userId !== currentUser.id) return;
+    if (!post || post.userId !== currentUser.id) return { success: false, message: 'Publicação não encontrada.' };
 
     setRawPosts(prev => prev.filter(p => p.id !== postId));
     const { error } = await supabase.functions.invoke('delete-post', { body: { post_id: postId } });
-    if (error) setRawPosts(prev => [post, ...prev]);
+    if (error) {
+      setRawPosts(prev => [post, ...prev]);
+      return { success: false, message: 'Não foi possível apagar a publicação. Tente novamente.' };
+    }
+    return { success: true };
   };
 
   const deleteComment = async (postId, commentId) => {
@@ -363,6 +436,8 @@ export const SocialProvider = ({ children }) => {
       friendships,
       messages,
       contactsLoading,
+      unreadMessageCount,
+      markMessagesRead,
       notifications,
       notificationsLoading,
       unreadNotificationCount,
@@ -374,6 +449,10 @@ export const SocialProvider = ({ children }) => {
       acceptFriendRequest,
       rejectFriendRequest,
       removeFriend,
+      blockedUsers,
+      isBlocked,
+      blockUser,
+      unblockUser,
       canChat,
       sendMessage,
       createPost,

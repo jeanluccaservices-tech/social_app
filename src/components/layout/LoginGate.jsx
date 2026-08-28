@@ -46,7 +46,7 @@ const FEATURES = [
   },
   {
     icon: Sparkles,
-    title: 'Recursos PRÓ Exclusivos',
+    title: 'Recursos VIP Exclusivos',
     desc: 'Destaque seu perfil, participe das salas VIP e desbloqueie recursos premium.'
   }
 ];
@@ -127,7 +127,7 @@ export const LoginGate = () => {
             onClick={() => setIsProModalOpen(true)}
             className="px-6 py-3 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-amber-500/40 text-[var(--c-pro-text)] font-bold text-xs rounded-2xl transition flex items-center gap-2"
           >
-            <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" /> Conheça o plano PRÓ
+            <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" /> Conheça o plano VIP
           </button>
         </div>
 

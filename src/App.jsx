@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { SocialProvider } from './context/SocialContext';
+import { SocialProvider, useSocial } from './context/SocialContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginGate } from './components/layout/LoginGate';
@@ -17,6 +18,7 @@ import { Rss, MessageCircle, Users, User, Flame, Heart } from 'lucide-react';
 
 const MainContent = () => {
   const { currentUser, authLoading } = useAuth();
+  const { unreadMessageCount } = useSocial();
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'groups' | 'chat' | 'friends' | 'profile'
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const [selectedChatUser, setSelectedChatUser] = useState(null);
@@ -104,8 +106,8 @@ const MainContent = () => {
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--c-surface-2)]/95 backdrop-blur-2xl border-t border-rose-500/20 px-2 py-1.5 flex items-center justify-around z-40 shadow-2xl">
         {[
           { id: 'feed', label: 'Feed', icon: Rss },
-          { id: 'groups', label: 'Grupos', icon: Flame, badge: 'VIP' },
-          { id: 'chat', label: 'Chat', icon: MessageCircle },
+          { id: 'groups', label: 'Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
+          { id: 'chat', label: 'Chat', icon: MessageCircle, badge: unreadMessageCount > 0 ? (unreadMessageCount > 9 ? '9+' : unreadMessageCount) : null, badgeColor: 'bg-rose-600 text-white' },
           { id: 'friends', label: 'Amigos', icon: Users },
           { id: 'profile', label: 'Perfil', icon: User }
         ].map(item => {
@@ -122,7 +124,7 @@ const MainContent = () => {
               <Icon className="w-5 h-5" />
               <span className="text-[10px] font-semibold">{item.label}</span>
               {item.badge && (
-                <span className="absolute top-0.5 right-1.5 text-[7px] font-black px-1 py-0.5 rounded-full bg-amber-500 text-black leading-none">
+                <span className={`absolute top-0.5 right-1.5 text-[7px] font-black px-1 py-0.5 rounded-full leading-none ${item.badgeColor}`}>
                   {item.badge}
                 </span>
               )}
@@ -147,11 +149,13 @@ export function App() {
 
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <SocialProvider>
-          <MainContent />
-        </SocialProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <SocialProvider>
+            <MainContent />
+          </SocialProvider>
+        </AuthProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

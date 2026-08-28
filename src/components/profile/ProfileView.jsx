@@ -6,7 +6,8 @@ import { ProfileSuggestions } from '../feed/ProfileSuggestions';
 import { EditProfileModal } from './EditProfileModal';
 import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
-import { Users, MapPin, Calendar, Sparkles, MessageSquare, UserPlus, Check, Pencil, Target, Navigation, Info, Rss, Image as ImageIcon } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { Users, MapPin, Calendar, Sparkles, MessageSquare, UserPlus, UserX, Check, Pencil, Target, Navigation, Info, Rss, Image as ImageIcon, Ban, ShieldCheck } from 'lucide-react';
 
 const ABOUT_FIELDS = [
   { key: 'heightCm', label: 'Altura', format: (v) => `${v} cm` },
@@ -28,7 +29,8 @@ const KVRow = ({ label, value }) => (
 
 export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, setIsProModalOpen } = useAuth();
-  const { posts, getFriendshipStatus, sendFriendRequest } = useSocial();
+  const { posts, getFriendshipStatus, sendFriendRequest, rejectFriendRequest, isBlocked, blockUser, unblockUser } = useSocial();
+  const { showToast } = useToast();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('posts'); // 'about' | 'posts' | 'media'
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -45,6 +47,27 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
 
   const isMyProfile = currentUser?.id === profileUser.id;
   const friendStatus = getFriendshipStatus(profileUser.id);
+  const blocked = isBlocked(profileUser.id);
+
+  const handleSendRequest = async () => {
+    const res = await sendFriendRequest(profileUser.id);
+    showToast(res.success ? 'Convite enviado!' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleCancelRequest = async () => {
+    const res = await rejectFriendRequest(profileUser.id);
+    showToast(res.success ? 'Convite cancelado.' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleToggleBlock = () => {
+    if (blocked) {
+      unblockUser(profileUser.id);
+      return;
+    }
+    if (window.confirm(`Bloquear ${profileUser.name}? Vocês deixam de ver o perfil, publicações e mensagens um do outro.`)) {
+      blockUser(profileUser.id);
+    }
+  };
   const userPosts = posts.filter(p => p.userId === profileUser.id);
   const mediaPosts = userPosts.filter(p => p.mediaUrl);
   const filledAboutFields = ABOUT_FIELDS
@@ -62,10 +85,9 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
             <img
               src={profileUser.cover}
               alt="Capa do Perfil"
-              className="w-full h-full object-cover opacity-60"
+              className="w-full h-full object-cover"
             />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--c-surface)] via-transparent to-transparent"></div>
         </div>
 
         {/* Profile Info Header */}
@@ -105,7 +127,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
                     }`}
                   >
                     <Sparkles className="w-4 h-4 fill-current" />
-                    {profileUser.isPro ? 'Plano PRÓ Ativo' : 'Virar PRÓ'}
+                    {profileUser.isPro ? 'Plano VIP Ativo' : 'Virar VIP'}
                   </button>
                 </>
               ) : (
@@ -119,17 +141,34 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
 
                   {friendStatus === 'NONE' && (
                     <button
-                      onClick={() => sendFriendRequest(profileUser.id)}
+                      onClick={handleSendRequest}
                       className="px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-rose-500/20 text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-xl font-bold text-xs transition flex items-center gap-1.5"
                     >
                       <UserPlus className="w-4 h-4 text-rose-400" /> Solicitar Amizade
                     </button>
                   )}
                   {friendStatus === 'SENT' && (
-                    <span className="px-3 py-2 bg-[var(--c-overlay-5)] text-[var(--c-text-muted)] text-xs font-semibold rounded-xl border border-[var(--c-border)] flex items-center gap-1">
-                      <Check className="w-3.5 h-3.5 text-emerald-400" /> Convite Enviado
-                    </span>
+                    <button
+                      onClick={handleCancelRequest}
+                      title="Cancelar convite"
+                      className="px-3 py-2 bg-[var(--c-overlay-5)] hover:bg-red-500/10 text-[var(--c-text-muted)] hover:text-red-400 text-xs font-semibold rounded-xl border border-[var(--c-border)] hover:border-red-500/30 transition flex items-center gap-1"
+                    >
+                      <UserX className="w-3.5 h-3.5" /> Cancelar Convite
+                    </button>
                   )}
+
+                  <button
+                    onClick={handleToggleBlock}
+                    title={blocked ? 'Desbloquear usuário' : 'Bloquear usuário'}
+                    className={`px-3 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 border ${
+                      blocked
+                        ? 'bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30 text-emerald-400'
+                        : 'bg-[var(--c-overlay-5)] hover:bg-red-500/10 border-[var(--c-border)] text-[var(--c-text-muted)] hover:text-red-400'
+                    }`}
+                  >
+                    {blocked ? <ShieldCheck className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                    {blocked ? 'Desbloquear' : 'Bloquear'}
+                  </button>
                 </>
               )}
             </div>
@@ -140,7 +179,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
             <div className="flex items-center gap-2">
               <h2 className="font-display text-xl font-semibold text-[var(--c-text)]">{profileUser.name}</h2>
               {profileUser.isPro && (
-                <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" title="Membro PRÓ" />
+                <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" title="Membro VIP" />
               )}
             </div>
 

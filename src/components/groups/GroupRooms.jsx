@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { uploadImage } from '../../lib/storage';
+import { MediaLightbox } from '../common/MediaLightbox';
 import { formatClockTime } from '../../utils/time';
 import {
   Sparkles, Lock, Send, Users, Flame, ArrowLeft, Loader2, Compass, ShieldAlert, LogOut,
-  HeartHandshake, Transgender, Users2, MessageCircle, Eye, Images, Drama, UsersRound, Star
+  HeartHandshake, Transgender, Users2, MessageCircle, Eye, Images, Drama, UsersRound, Star,
+  Image as ImageIcon, X
 } from 'lucide-react';
 
 const ICONS = {
@@ -53,9 +56,28 @@ export const GroupRooms = () => {
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [activeGroup, setActiveGroup] = useState(null);
   const [inputMessage, setInputMessage] = useState('');
+  const [pendingImage, setPendingImage] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [sending, setSending] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [joiningId, setJoiningId] = useState(null);
   const [joinError, setJoinError] = useState('');
+  const imageInputRef = useRef(null);
+
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    setUploadingImage(true);
+    try {
+      const url = await uploadImage('media', currentUser.id, file);
+      setPendingImage(url);
+    } catch {
+      // upload failed silently; user can retry
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
 
   const fetchGroups = useCallback(async () => {
     setGroupsLoading(true);
@@ -63,7 +85,7 @@ export const GroupRooms = () => {
       supabase.from('group_rooms').select('*').order('name'),
       supabase
         .from('group_room_messages')
-        .select('id, room_id, sender_id, text, created_at, profiles ( name, is_couple, pro_expires_at )')
+        .select('id, room_id, sender_id, text, media_url, created_at, profiles ( name, is_couple, pro_expires_at )')
         .order('created_at', { ascending: true }),
       supabase.from('group_room_members').select('room_id, user_id')
     ]);
@@ -77,6 +99,7 @@ export const GroupRooms = () => {
         isCouple: m.profiles?.is_couple || false,
         isPro: !!m.profiles?.pro_expires_at && new Date(m.profiles.pro_expires_at) > new Date(),
         text: m.text,
+        mediaUrl: m.media_url,
         timestamp: formatClockTime(m.created_at)
       });
     });
@@ -122,7 +145,7 @@ export const GroupRooms = () => {
     return (
       <div className="p-8 bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl text-center space-y-4 max-w-md mx-auto my-12">
         <Users className="w-12 h-12 text-rose-500 mx-auto" />
-        <h3 className="text-lg font-bold text-[var(--c-text)]">Salas de Grupos PRÓ</h3>
+        <h3 className="text-lg font-bold text-[var(--c-text)]">Salas de Grupos VIP</h3>
         <p className="text-xs text-[var(--c-accent)]">Faça login para acessar os bate-papos exclusivos de membros VIP.</p>
         <button
           onClick={() => setIsAuthModalOpen(true)}
@@ -141,15 +164,15 @@ export const GroupRooms = () => {
         <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center mx-auto text-amber-400 shadow-lg shadow-amber-500/20">
           <Lock className="w-7 h-7" />
         </div>
-        <h3 className="text-lg font-bold text-[var(--c-text)]">Salas de Grupos Exclusivas PRÓ</h3>
+        <h3 className="text-lg font-bold text-[var(--c-text)]">Salas de Grupos Exclusivas VIP</h3>
         <p className="text-xs text-[var(--c-accent)]">
-          As salas de grupo e suas mensagens são visíveis apenas para membros com <strong className="text-[var(--c-pro-text)]">Conta PRÓ</strong>. Assine para visualizar e participar.
+          As salas de grupo e suas mensagens são visíveis apenas para membros com <strong className="text-[var(--c-pro-text)]">Conta VIP</strong>. Assine para visualizar e participar.
         </p>
         <button
           onClick={() => setIsProModalOpen(true)}
           className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
         >
-          <Sparkles className="w-4 h-4 fill-black" /> Desbloquear com Conta PRÓ
+          <Sparkles className="w-4 h-4 fill-black" /> Desbloquear com Conta VIP
         </button>
       </div>
     );
@@ -201,12 +224,17 @@ export const GroupRooms = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !activeGroup || sending) return;
+    if ((!inputMessage.trim() && !pendingImage) || !activeGroup || sending) return;
 
     setSending(true);
     const { data, error } = await supabase
       .from('group_room_messages')
-      .insert({ room_id: activeGroup.id, sender_id: currentUser.id, text: inputMessage })
+      .insert({
+        room_id: activeGroup.id,
+        sender_id: currentUser.id,
+        text: inputMessage || null,
+        media_url: pendingImage || null
+      })
       .select()
       .single();
     setSending(false);
@@ -219,11 +247,13 @@ export const GroupRooms = () => {
       isCouple: currentUser.isCouple,
       isPro: currentUser.isPro,
       text: data.text,
+      mediaUrl: data.media_url,
       timestamp: formatClockTime(data.created_at)
     };
 
     setGroups(prev => prev.map(g => g.id === activeGroup.id ? { ...g, messages: [...g.messages, newMsg] } : g));
     setInputMessage('');
+    setPendingImage('');
   };
 
   const myGroups = groups.filter(g => g.isMember);
@@ -247,7 +277,7 @@ export const GroupRooms = () => {
               <GroupIcon className="w-6 h-6" />
             </div>
             <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
-              <Sparkles className="w-3 h-3 fill-amber-400" /> VIP PRÓ
+              <Sparkles className="w-3 h-3 fill-amber-400" /> VIP
             </span>
           </div>
 
@@ -296,7 +326,7 @@ export const GroupRooms = () => {
         <div className="space-y-1 text-center md:text-left">
           <div className="flex items-center justify-center md:justify-start gap-2">
             <Sparkles className="w-5 h-5 text-amber-400 fill-amber-400" />
-            <h2 className="font-display text-xl font-semibold text-white">Salas de Grupos VIP (Exclusivo PRÓ)</h2>
+            <h2 className="font-display text-xl font-semibold text-white">Salas de Grupos VIP</h2>
           </div>
           <p className="text-xs text-amber-200">
             Conecte-se em salas de bate-papo em grupo com casais e solteiros da comunidade LoveVibe.
@@ -324,7 +354,7 @@ export const GroupRooms = () => {
                 <h3 className="text-sm font-bold text-[var(--c-text)] flex items-center gap-2">
                   {activeGroup.name}
                   <span className="text-[9px] bg-amber-500/20 text-[var(--c-pro-text)] border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
-                    GRUPO PRÓ ⭐
+                    GRUPO VIP ⭐
                   </span>
                 </h3>
                 <p className="text-[10px] text-[var(--c-accent)]">{activeGroup.memberCount} membros participando</p>
@@ -357,16 +387,24 @@ export const GroupRooms = () => {
                   <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <span className="text-[10px] text-[var(--c-text-muted)] font-semibold mb-0.5 px-1 flex items-center gap-1">
                       {msg.senderName} {msg.isCouple && <span className="text-rose-400">❤️ Casal</span>}
-                      {msg.isPro && <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" title="Membro PRÓ" />}
+                      {msg.isPro && <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" title="Membro VIP" />}
                     </span>
                     <div
-                      className={`max-w-[80%] p-3 rounded-2xl text-xs ${
+                      className={`max-w-[80%] p-3 rounded-2xl text-xs space-y-2 ${
                         isMe
                           ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-br-none shadow-md'
                           : 'bg-[var(--c-surface)] text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-bl-none'
                       }`}
                     >
-                      <p className="leading-relaxed">{msg.text}</p>
+                      {msg.mediaUrl && (
+                        <img
+                          src={msg.mediaUrl}
+                          alt="Foto enviada"
+                          onClick={() => setLightboxSrc(msg.mediaUrl)}
+                          className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
+                        />
+                      )}
+                      {msg.text && <p className="leading-relaxed">{msg.text}</p>}
                     </div>
                     <span className="text-[9px] text-[var(--c-text-faint)] mt-1 px-1">{msg.timestamp}</span>
                   </div>
@@ -376,22 +414,48 @@ export const GroupRooms = () => {
           </div>
 
           {/* Send Input */}
-          <form onSubmit={handleSendMessage} className="p-3 bg-[var(--c-surface-2)] border-t border-[var(--c-border)] flex gap-2">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Escreva sua mensagem no grupo..."
-              className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
-            />
-            <button
-              type="submit"
-              disabled={sending}
-              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center disabled:opacity-60"
-            >
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </button>
-          </form>
+          <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)]">
+            {pendingImage && (
+              <div className="px-3 pt-3 flex items-center gap-2">
+                <div className="relative">
+                  <img src={pendingImage} alt="Pré-visualização" className="w-16 h-16 rounded-xl object-cover border border-[var(--c-border)]" />
+                  <button
+                    type="button"
+                    onClick={() => setPendingImage('')}
+                    className="absolute -top-1.5 -right-1.5 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+            <form onSubmit={handleSendMessage} className="p-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={uploadingImage}
+                className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
+                title="Enviar foto"
+              >
+                {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+              </button>
+              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder="Escreva sua mensagem no grupo..."
+                className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 min-w-0"
+              />
+              <button
+                type="submit"
+                disabled={sending}
+                className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
+              >
+                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </button>
+            </form>
+          </div>
         </div>
       ) : (
         <div className="space-y-8">
@@ -434,6 +498,8 @@ export const GroupRooms = () => {
           </div>
         </div>
       )}
+
+      <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 };

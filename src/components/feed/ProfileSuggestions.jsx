@@ -1,15 +1,50 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
+import { useToast } from '../../context/ToastContext';
+import { isWithinRadius } from '../../lib/geo';
 import { Avatar } from '../common/Avatar';
-import { Sparkles, UserPlus, MessageSquare, Check, MapPin } from 'lucide-react';
+import { Sparkles, UserPlus, UserX, MessageSquare, Check, MapPin } from 'lucide-react';
 
 export const ProfileSuggestions = ({ onSelectUser, onOpenChatWithUser }) => {
   const { currentUser, users } = useAuth();
-  const { getFriendshipStatus, sendFriendRequest } = useSocial();
+  const { getFriendshipStatus, sendFriendRequest, rejectFriendRequest } = useSocial();
+  const { showToast } = useToast();
 
-  // Exclude current logged in user
-  const suggestions = users.filter(u => u.id !== currentUser?.id);
+  const handleSendRequest = async (targetUserId) => {
+    const res = await sendFriendRequest(targetUserId);
+    showToast(res.success ? 'Convite enviado!' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleCancelRequest = async (targetUserId) => {
+    const res = await rejectFriendRequest(targetUserId);
+    showToast(res.success ? 'Convite cancelado.' : res.message, res.success ? 'success' : 'error');
+  };
+
+  // Narrowed by the user's saved preferences (gender, age range, distance
+  // from their city) — same rule as the Explorar/Match tabs.
+  const suggestions = users.filter(u => {
+    if (u.id === currentUser?.id) return false;
+    if (!currentUser) return true;
+
+    const prefs = currentUser.preferences || {};
+    if (prefs.genders?.length > 0) {
+      const g = u.isCouple ? 'Casal' : u.gender;
+      if (!prefs.genders.includes(g)) return false;
+    }
+
+    const age = u.isCouple
+      ? Math.min(Number(u.partner1?.age) || 0, Number(u.partner2?.age) || 0)
+      : Number(u.age) || 0;
+    if (prefs.ageMin && age < Number(prefs.ageMin)) return false;
+    if (prefs.ageMax && age > Number(prefs.ageMax)) return false;
+
+    if (prefs.radiusKm && !isWithinRadius(currentUser.location, u.location, Number(prefs.radiusKm))) {
+      return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="p-4 bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl shadow-xl space-y-3">
@@ -75,12 +110,15 @@ export const ProfileSuggestions = ({ onSelectUser, onOpenChatWithUser }) => {
                     <MessageSquare className="w-3.5 h-3.5" /> Chat
                   </button>
                 ) : friendStatus === 'SENT' ? (
-                  <div className="w-full py-1.5 bg-[var(--c-overlay-5)] border border-[var(--c-border)] rounded-xl text-[10px] text-[var(--c-text-muted)] font-medium text-center flex items-center justify-center gap-1">
-                    <Check className="w-3 h-3 text-emerald-400" /> Enviado
-                  </div>
+                  <button
+                    onClick={() => handleCancelRequest(u.id)}
+                    className="w-full py-1.5 bg-[var(--c-overlay-5)] hover:bg-red-500/10 border border-[var(--c-border)] hover:border-red-500/30 rounded-xl text-[10px] text-[var(--c-text-muted)] hover:text-red-400 font-medium text-center flex items-center justify-center gap-1 transition"
+                  >
+                    <UserX className="w-3 h-3" /> Cancelar convite
+                  </button>
                 ) : (
                   <button
-                    onClick={() => sendFriendRequest(u.id)}
+                    onClick={() => handleSendRequest(u.id)}
                     className="w-full py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-[11px] font-bold shadow-md transition flex items-center justify-center gap-1"
                   >
                     <UserPlus className="w-3.5 h-3.5" /> Conectar

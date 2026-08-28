@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSocial } from '../../context/SocialContext';
 import { Avatar } from '../common/Avatar';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Loader2 } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Loader2, X } from 'lucide-react';
 
 const TYPE_META = {
   post_like: { icon: Heart, iconClass: 'text-rose-400', text: (n) => `${n.actorName} curtiu sua publicação` },
@@ -59,20 +59,28 @@ export const NotificationsBell = ({ onOpenProfile, onOpenFriends }) => {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-[var(--c-surface)] border border-[var(--c-border)] rounded-2xl shadow-2xl overflow-hidden z-50">
-          <div className="p-3 border-b border-[var(--c-border-soft)] flex items-center justify-between">
-            <span className="text-xs font-bold text-[var(--c-text)]">Notificações</span>
-            {unreadNotificationCount > 0 && (
+        <div className="fixed inset-0 z-50 flex flex-col md:absolute md:inset-auto md:right-0 md:mt-2 md:w-80 md:max-w-[calc(100vw-2rem)] md:max-h-[32rem] bg-[var(--c-surface)] md:border md:border-[var(--c-border)] md:rounded-2xl shadow-2xl overflow-hidden">
+          <div className="p-3 border-b border-[var(--c-border-soft)] flex items-center justify-between flex-shrink-0">
+            <span className="text-sm md:text-xs font-bold text-[var(--c-text)]">Notificações</span>
+            <div className="flex items-center gap-3">
+              {unreadNotificationCount > 0 && (
+                <button
+                  onClick={markAllNotificationsRead}
+                  className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition"
+                >
+                  Marcar todas como lidas
+                </button>
+              )}
               <button
-                onClick={markAllNotificationsRead}
-                className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition"
+                onClick={() => setOpen(false)}
+                className="md:hidden p-1.5 -mr-1.5 text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-10)] rounded-lg transition"
               >
-                Marcar todas como lidas
+                <X className="w-4 h-4" />
               </button>
-            )}
+            </div>
           </div>
 
-          <div className="p-2 flex gap-1.5 border-b border-[var(--c-border-soft)] overflow-x-auto scrollbar-none">
+          <div className="p-2 flex gap-1.5 border-b border-[var(--c-border-soft)] overflow-x-auto scrollbar-none flex-shrink-0">
             {FILTERS.map(f => (
               <button
                 key={f.id}
@@ -88,7 +96,7 @@ export const NotificationsBell = ({ onOpenProfile, onOpenFriends }) => {
             ))}
           </div>
 
-          <div className="max-h-80 overflow-y-auto">
+          <div className="flex-1 md:flex-none md:max-h-80 overflow-y-auto">
             {notificationsLoading ? (
               <div className="flex items-center justify-center py-8 text-[var(--c-text-muted)]">
                 <Loader2 className="w-5 h-5 animate-spin" />

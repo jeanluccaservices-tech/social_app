@@ -2,13 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { Avatar } from '../common/Avatar';
+import { MediaLightbox } from '../common/MediaLightbox';
 import { REPORT_REASONS } from '../../lib/constants';
+import { useToast } from '../../context/ToastContext';
 import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag } from 'lucide-react';
 
 export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
   const { toggleLikePost, addComment, deletePost, deleteComment, reportPost, getFriendshipStatus, sendFriendRequest } = useSocial();
+  const { showToast } = useToast();
   const [showComments, setShowComments] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const [commentInput, setCommentInput] = useState('');
   const [confirmDeleteCommentId, setConfirmDeleteCommentId] = useState(null);
 
@@ -87,7 +91,7 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
                 {author.name}
               </h3>
               {author.isPro && (
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro PRÓ" />
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro VIP" />
               )}
             </div>
 
@@ -159,7 +163,11 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
                       <p className="text-[11px] text-[var(--c-text-secondary)] px-1">Excluir esta publicação?</p>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => { deletePost(post.id); setOptionsOpen(false); }}
+                          onClick={async () => {
+                            setOptionsOpen(false);
+                            const res = await deletePost(post.id);
+                            showToast(res.success ? 'Publicação apagada.' : res.message, res.success ? 'success' : 'error');
+                          }}
                           className="flex-1 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-[11px] font-bold transition"
                         >
                           Excluir
@@ -216,7 +224,8 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
           <img
             src={post.mediaUrl}
             alt="Mídia da postagem"
-            className="w-full max-h-[450px] object-cover hover:scale-102 transition duration-300"
+            onClick={() => setLightboxSrc(post.mediaUrl)}
+            className="w-full max-h-[450px] object-cover hover:scale-102 transition duration-300 cursor-zoom-in"
           />
         </div>
       )}
@@ -320,6 +329,8 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
           </form>
         </div>
       )}
+
+      <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 };

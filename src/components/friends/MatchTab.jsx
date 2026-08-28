@@ -4,7 +4,7 @@ import { Avatar } from '../common/Avatar';
 
 const SWIPE_THRESHOLD = 110;
 
-export const MatchTab = ({ candidates, onLike, onSelectUser }) => {
+export const MatchTab = ({ candidates, onLike, onSelectUser, hasActiveFilters, onClearFilters }) => {
   const [swipedIds, setSwipedIds] = useState(() => new Set());
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -66,16 +66,30 @@ export const MatchTab = ({ candidates, onLike, onSelectUser }) => {
     return (
       <div className="text-center py-16 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl space-y-2 max-w-md mx-auto">
         <Heart className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
-        <p className="text-sm font-semibold text-[var(--c-text-muted)]">Sem mais perfis por aqui.</p>
-        <p className="text-[11px] text-[var(--c-accent)]">Volte mais tarde para descobrir novas pessoas!</p>
-        {lastAction && (
-          <button
-            onClick={handleUndo}
-            className="mt-2 px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-xs font-bold text-[var(--c-text-secondary)] rounded-xl border border-[var(--c-border)] transition inline-flex items-center gap-1.5"
-          >
-            <Undo2 className="w-3.5 h-3.5" /> Desfazer última ação
-          </button>
-        )}
+        <p className="text-sm font-semibold text-[var(--c-text-muted)]">
+          {hasActiveFilters ? 'Nenhum perfil encontrado com os filtros aplicados.' : 'Sem mais perfis por aqui.'}
+        </p>
+        <p className="text-[11px] text-[var(--c-accent)]">
+          {hasActiveFilters ? 'Tente ajustar ou limpar os filtros para ver mais gente.' : 'Volte mais tarde para descobrir novas pessoas!'}
+        </p>
+        <div className="flex items-center justify-center gap-2 flex-wrap pt-1">
+          {hasActiveFilters && onClearFilters && (
+            <button
+              onClick={onClearFilters}
+              className="px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-xs font-bold text-[var(--c-text-secondary)] rounded-xl border border-[var(--c-border)] transition"
+            >
+              Limpar filtros
+            </button>
+          )}
+          {lastAction && (
+            <button
+              onClick={handleUndo}
+              className="px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-xs font-bold text-[var(--c-text-secondary)] rounded-xl border border-[var(--c-border)] transition inline-flex items-center gap-1.5"
+            >
+              <Undo2 className="w-3.5 h-3.5" /> Desfazer última ação
+            </button>
+          )}
+        </div>
       </div>
     );
   }
