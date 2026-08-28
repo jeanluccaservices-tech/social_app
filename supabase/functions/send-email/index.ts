@@ -17,7 +17,8 @@ import { Resend } from 'npm:resend';
 const resend = new Resend(Deno.env.get('RESEND_API_KEY') as string);
 const hookSecret = (Deno.env.get('SEND_EMAIL_HOOK_SECRET') as string).replace('v1,whsec_', '');
 
-const FROM_ADDRESS = 'LoveVibe <onboarding@resend.dev>';
+const FROM_ADDRESS = 'LoveVibe <noreply@lovevibe.com.br>';
+const REPLY_TO_ADDRESS = 'contato@lovevibe.com.br';
 
 type EmailData = {
   token: string;
@@ -85,6 +86,7 @@ Deno.serve(async (req) => {
     const { error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to: [user.email],
+      reply_to: REPLY_TO_ADDRESS,
       subject,
       html,
     });
