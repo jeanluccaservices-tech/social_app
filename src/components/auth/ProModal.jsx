@@ -255,7 +255,7 @@ export const ProModal = () => {
               <div className="p-4 bg-gradient-to-r from-amber-950/40 via-yellow-950/40 to-amber-950/40 border border-amber-500/30 rounded-2xl text-center mb-4 space-y-1">
                 <span className="text-[10px] uppercase tracking-widest text-amber-400 font-extrabold">Acesso PRÓ mensal</span>
                 <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-3xl font-black text-[var(--c-text)]">R$ 29,90</span>
+                  <span className="text-3xl font-black text-[var(--c-text)]">R$ 24,90</span>
                   <span className="text-xs text-[var(--c-pro-text)]">/ mês</span>
                 </div>
                 <p className="text-[10px] text-[var(--c-text-muted)]">
@@ -317,7 +317,7 @@ export const ProModal = () => {
                   <p className="text-[11px] text-center text-red-400 font-medium">{errorMsg}</p>
                 )}
                 <p className="text-[10px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider text-center">
-                  Assinar Plano VIP PRÓ (R$ 29,90) — Escolha a forma de pagamento
+                  Assinar Plano VIP PRÓ (R$ 24,90) — Escolha a forma de pagamento
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button

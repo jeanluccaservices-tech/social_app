@@ -17,7 +17,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
   const navItems = [
     { id: 'feed', label: 'Feed & Mídias', icon: Rss, badge: null },
     { id: 'groups', label: 'Salas de Grupos PRÓ', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
-    { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: currentUser && !currentUser.isPro ? 'PRÓ' : null, badgeColor: 'bg-amber-500 text-black font-black' },
+    { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: null },
     { id: 'friends', label: 'Amigos & Convites', icon: Users, badge: pendingRequestsCount > 0 ? pendingRequestsCount : null, badgeColor: 'bg-rose-600 text-white' },
     { id: 'profile', label: 'Meu Perfil', icon: User, badge: null }
   ];

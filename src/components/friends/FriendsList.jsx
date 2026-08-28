@@ -5,10 +5,10 @@ import { MatchTab } from './MatchTab';
 import { Avatar } from '../common/Avatar';
 import { isWithinRadius } from '../../lib/geo';
 import { GENDERS } from '../../lib/constants';
-import { Users, UserCheck, UserPlus, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal } from 'lucide-react';
+import { Users, UserCheck, UserPlus, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal, Lock } from 'lucide-react';
 
 export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
-  const { currentUser, users, setIsAuthModalOpen } = useAuth();
+  const { currentUser, users, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
   const { friendships, contactsLoading, acceptFriendRequest, rejectFriendRequest, sendFriendRequest, removeFriend, getFriendshipStatus } = useSocial();
   const [tab, setTab] = useState('friends'); // 'friends' | 'requests' | 'explore' | 'match'
   const [exploreView, setExploreView] = useState('grid'); // 'grid' | 'list'
@@ -155,6 +155,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             }`}
           >
             <Heart className="w-4 h-4" /> Match
+            <span className="text-[8px] bg-amber-500 text-black px-1.5 py-0.3 rounded-full font-black">PRÓ</span>
           </button>
         </div>
       </div>
@@ -452,13 +453,31 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
         </div>
       )}
 
-      {/* Tab 4: Match (swipe) */}
+      {/* Tab 4: Match (swipe) — exclusive to PRO members */}
       {!contactsLoading && tab === 'match' && (
-        <MatchTab
-          candidates={exploreUsers}
-          onLike={sendFriendRequest}
-          onSelectUser={onSelectUser}
-        />
+        currentUser.isPro ? (
+          <MatchTab
+            candidates={exploreUsers}
+            onLike={sendFriendRequest}
+            onSelectUser={onSelectUser}
+          />
+        ) : (
+          <div className="p-8 bg-gradient-to-b from-amber-950/40 via-rose-950/30 to-[var(--c-surface)] border border-amber-500/30 rounded-3xl text-center space-y-4 max-w-md mx-auto shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center mx-auto text-amber-400 shadow-lg shadow-amber-500/20">
+              <Lock className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-bold text-[var(--c-text)]">Match Exclusivo PRÓ</h3>
+            <p className="text-xs text-[var(--c-accent)]">
+              O modo Match (swipe) é um recurso exclusivo para membros com <strong className="text-[var(--c-pro-text)]">Conta PRÓ</strong>. Assine para curtir e encontrar novas conexões.
+            </p>
+            <button
+              onClick={() => setIsProModalOpen(true)}
+              className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-4 h-4 fill-black" /> Desbloquear com Conta PRÓ
+            </button>
+          </div>
+        )
       )}
     </div>
   );

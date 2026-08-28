@@ -12,7 +12,7 @@
 //                                redirects the shopper after paying)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const PRO_PRICE_BRL = 29.9;
+const PRO_PRICE_BRL = 24.9;
 
 // Called directly from the browser via supabase.functions.invoke(), so it
 // needs CORS headers on every response, including the OPTIONS preflight.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocialProvider } from './context/SocialContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -16,7 +16,7 @@ import { AgeGate, isAgeVerified } from './components/auth/AgeGate';
 import { Rss, MessageCircle, Users, User, Flame, Heart } from 'lucide-react';
 
 const MainContent = () => {
-  const { currentUser, authLoading, setIsAuthModalOpen } = useAuth();
+  const { currentUser, authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'groups' | 'chat' | 'friends' | 'profile'
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const [selectedChatUser, setSelectedChatUser] = useState(null);
@@ -30,12 +30,6 @@ const MainContent = () => {
     setSelectedUserForProfile(targetUser);
     setActiveTab('profile');
   };
-
-  // Being logged out is not a "browse with limited buttons" state — it's
-  // mandatory to sign in before seeing anyone's profile, photos or posts.
-  useEffect(() => {
-    if (!authLoading && !currentUser) setIsAuthModalOpen(true);
-  }, [authLoading, currentUser, setIsAuthModalOpen]);
 
   if (authLoading) {
     return (
@@ -53,6 +47,7 @@ const MainContent = () => {
       <>
         <LoginGate />
         <AuthModal />
+        <ProModal />
       </>
     );
   }
