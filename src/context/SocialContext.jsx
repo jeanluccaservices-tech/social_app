@@ -312,16 +312,18 @@ export const SocialProvider = ({ children }) => {
   };
 
   // Soft delete: the row stays in the database (referenced by likes/etc.)
-  // but is hidden from every read going forward. Goes through an RPC
-  // (rather than a plain table UPDATE) so the ownership check happens
-  // server-side in the function body.
+  // but is hidden from every read going forward. Goes through the
+  // delete-post Edge Function (rather than a plain table UPDATE or RPC) so
+  // the ownership check happens server-side AND, when the post has an
+  // image, that file gets moved into a separate `deleted/` storage prefix
+  // instead of staying mixed in with everyone's active media.
   const deletePost = async (postId) => {
     if (!currentUser) return;
     const post = rawPosts.find(p => p.id === postId);
     if (!post || post.userId !== currentUser.id) return;
 
     setRawPosts(prev => prev.filter(p => p.id !== postId));
-    const { error } = await supabase.rpc('soft_delete_post', { target_post_id: postId });
+    const { error } = await supabase.functions.invoke('delete-post', { body: { post_id: postId } });
     if (error) setRawPosts(prev => [post, ...prev]);
   };
 

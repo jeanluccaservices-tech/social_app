@@ -2,9 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import { formatClockTime } from '../../utils/time';
-import { Sparkles, Lock, Send, Users, Wine, Plane, Flame, Music, ArrowLeft, Loader2, Compass, ShieldAlert, LogOut } from 'lucide-react';
+import {
+  Sparkles, Lock, Send, Users, Flame, ArrowLeft, Loader2, Compass, ShieldAlert, LogOut,
+  HeartHandshake, Transgender, Users2, MessageCircle, Eye, Images, Drama, UsersRound, Star
+} from 'lucide-react';
 
-const ICONS = { Flame, Wine, Plane, Music };
+const ICONS = {
+  HeartHandshake, Transgender, Users2, MessageCircle, Eye, Images, Drama, UsersRound, Compass, Star
+};
+
+// Matches the trans_only check in the group_room_members insert policy —
+// couples are excluded since they don't have a single gender identity.
+const TRANS_GENDERS = ['Mulher Trans', 'Homem Trans', 'Travesti', 'Crossdressing (CD)'];
 
 // Whether the current profile meets a room's entry rule.
 const isEligible = (currentUser, room) => {
@@ -14,6 +23,8 @@ const isEligible = (currentUser, room) => {
       return currentUser.isCouple;
     case 'singles_only':
       return !currentUser.isCouple;
+    case 'trans_only':
+      return !currentUser.isCouple && TRANS_GENDERS.includes(currentUser.gender);
     case 'location':
       return (currentUser.location || '').toLowerCase().includes((room.ruleValue || '').toLowerCase());
     default:
@@ -27,6 +38,8 @@ const ruleDescription = (room) => {
       return 'Somente casais podem participar desta sala.';
     case 'singles_only':
       return 'Somente perfis solteiros podem participar desta sala.';
+    case 'trans_only':
+      return 'Somente perfis trans ou travestis podem participar desta sala.';
     case 'location':
       return `Somente membros de ${room.ruleValue} podem participar desta sala.`;
     default:
@@ -50,7 +63,7 @@ export const GroupRooms = () => {
       supabase.from('group_rooms').select('*').order('name'),
       supabase
         .from('group_room_messages')
-        .select('id, room_id, sender_id, text, created_at, profiles ( name, is_couple )')
+        .select('id, room_id, sender_id, text, created_at, profiles ( name, is_couple, pro_expires_at )')
         .order('created_at', { ascending: true }),
       supabase.from('group_room_members').select('room_id, user_id')
     ]);
@@ -62,6 +75,7 @@ export const GroupRooms = () => {
         senderId: m.sender_id,
         senderName: m.profiles?.name || 'Usuário',
         isCouple: m.profiles?.is_couple || false,
+        isPro: !!m.profiles?.pro_expires_at && new Date(m.profiles.pro_expires_at) > new Date(),
         text: m.text,
         timestamp: formatClockTime(m.created_at)
       });
@@ -203,6 +217,7 @@ export const GroupRooms = () => {
       senderId: currentUser.id,
       senderName: currentUser.name,
       isCouple: currentUser.isCouple,
+      isPro: currentUser.isPro,
       text: data.text,
       timestamp: formatClockTime(data.created_at)
     };
@@ -342,6 +357,7 @@ export const GroupRooms = () => {
                   <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <span className="text-[10px] text-[var(--c-text-muted)] font-semibold mb-0.5 px-1 flex items-center gap-1">
                       {msg.senderName} {msg.isCouple && <span className="text-rose-400">❤️ Casal</span>}
+                      {msg.isPro && <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" title="Membro PRÓ" />}
                     </span>
                     <div
                       className={`max-w-[80%] p-3 rounded-2xl text-xs ${

@@ -13,7 +13,7 @@
 //   MERCADOPAGO_ACCESS_TOKEN  - same Access Token used by mp-checkout
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const PRO_PRICE_BRL = 29.9;
+const PRO_PRICE_BRL = 24.9;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

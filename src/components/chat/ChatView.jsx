@@ -4,7 +4,7 @@ import { useSocial } from '../../context/SocialContext';
 import { uploadImage } from '../../lib/storage';
 import { ChatLockBanner } from './ChatLockBanner';
 import { Avatar } from '../common/Avatar';
-import { Send, Search, Sparkles, MessageSquare, ArrowLeft, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, X, Loader2 } from 'lucide-react';
 
 export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
@@ -158,13 +158,6 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                     </p>
                   </div>
                 </div>
-
-                {/* Status Indicator */}
-                <div className="flex-shrink-0 ml-1">
-                  {u.isPro && (
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro PRÓ" />
-                  )}
-                </div>
               </button>
             );
           })}
@@ -197,9 +190,6 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                     <h3 className="text-sm font-bold text-[var(--c-text)] group-hover:text-rose-400 transition flex items-center gap-1.5 truncate">
                       {activeUser.name}
                       {activeUser.isCouple && <span className="text-xs text-rose-400">❤️</span>}
-                      {activeUser.isPro && (
-                        <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400 flex-shrink-0" title="Membro PRÓ" />
-                      )}
                     </h3>
                     <p className="text-[10px] text-[var(--c-accent)] truncate">
                       @{activeUser.username} • {activeUser.isCouple ? `Casal (${activeUser.age} anos)` : `${activeUser.gender}, ${activeUser.age} anos`}
