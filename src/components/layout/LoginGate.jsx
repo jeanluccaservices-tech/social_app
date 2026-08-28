@@ -4,6 +4,20 @@ import {
   Heart, LogIn, MessageSquare, Flame, ShieldCheck, Sparkles, HeartHandshake
 } from 'lucide-react';
 
+// Fixed (not randomized per-render) so embers don't jump around on
+// re-render — left offset %, size px, animation duration/delay in s.
+const EMBERS = [
+  { left: '6%', size: 20, duration: 16, delay: -2, drift: 24, opacity: 0.7 },
+  { left: '16%', size: 13, duration: 13, delay: -8, drift: -18, opacity: 0.55 },
+  { left: '27%', size: 25, duration: 20, delay: -5, drift: 30, opacity: 0.5 },
+  { left: '38%', size: 16, duration: 15, delay: -11, drift: -22, opacity: 0.65 },
+  { left: '52%', size: 22, duration: 18, delay: -3, drift: 16, opacity: 0.55 },
+  { left: '64%', size: 14, duration: 14, delay: -9, drift: -28, opacity: 0.7 },
+  { left: '76%', size: 27, duration: 22, delay: -6, drift: 20, opacity: 0.4 },
+  { left: '87%', size: 17, duration: 17, delay: -13, drift: -16, opacity: 0.6 },
+  { left: '94%', size: 12, duration: 12, delay: -1, drift: 26, opacity: 0.65 },
+];
+
 const FEATURES = [
   {
     icon: MessageSquare,
@@ -45,8 +59,39 @@ export const LoginGate = () => {
   const { setIsAuthModalOpen, setIsProModalOpen } = useAuth();
 
   return (
-    <div className="min-h-screen bg-transparent flex flex-col items-center px-4 py-10 sm:py-16">
-      <div className="w-full max-w-4xl flex flex-col items-center text-center gap-6">
+    <div className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10 sm:py-16">
+      {/* Hero backdrop: breathing color blobs + embers drifting up past the
+          pitch. Isolated to this screen so it doesn't bleed into the app. */}
+      <div aria-hidden="true" className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div
+          className="hero-aurora absolute -inset-x-[15%] -inset-y-[10%]"
+          style={{
+            backgroundImage: [
+              'radial-gradient(ellipse 55% 45% at 18% 8%, rgba(244,63,94,0.50), transparent 62%)',
+              'radial-gradient(ellipse 50% 48% at 84% 14%, rgba(217,70,239,0.38), transparent 62%)',
+              'radial-gradient(ellipse 42% 34% at 50% 4%, rgba(251,146,178,0.45), transparent 60%)',
+              'radial-gradient(ellipse 65% 50% at 50% 102%, rgba(219,39,119,0.32), transparent 65%)',
+            ].join(', '),
+          }}
+        />
+        {EMBERS.map((e, i) => (
+          <Heart
+            key={i}
+            className="animate-ember absolute bottom-0 fill-current text-rose-400/90"
+            style={{
+              left: e.left,
+              width: e.size,
+              height: e.size,
+              animationDuration: `${e.duration}s`,
+              animationDelay: `${e.delay}s`,
+              '--ember-drift': `${e.drift}px`,
+              '--ember-opacity': e.opacity,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="relative z-10 w-full max-w-4xl flex flex-col items-center text-center gap-6">
         {/* Brand */}
         <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-rose-600 to-pink-500 flex items-center justify-center shadow-lg shadow-rose-600/30">
           <Heart className="w-8 h-8 text-white fill-current animate-pulse" />
@@ -62,7 +107,7 @@ export const LoginGate = () => {
         {/* Hero copy */}
         <div className="space-y-3 max-w-2xl">
           <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[var(--c-text)] leading-snug">
-            Conexões reais, conversas sem filtro e experiências que você não encontra em qualquer app.
+            Conexões reais, conversas sem filtro e experiências que você não encontra em outros aplicativos.
           </h2>
           <p className="text-sm sm:text-base text-[var(--c-accent)] leading-relaxed">
             Contamos com serviços diferenciados: chat privado, salas de grupo exclusivas, match por swipe
