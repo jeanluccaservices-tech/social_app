@@ -1,14 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { uploadImage } from '../../lib/storage';
 import { ChatLockBanner } from './ChatLockBanner';
 import { Avatar } from '../common/Avatar';
+import { MediaLightbox } from '../common/MediaLightbox';
 import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, X, Loader2 } from 'lucide-react';
 
 export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
-  const { messages, sendMessage, canChat, contactsLoading } = useSocial();
+  const { messages, sendMessage, canChat, contactsLoading, areFriends, markMessagesRead } = useSocial();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeUser, setActiveUser] = useState(() => selectedTargetUser || null);
@@ -19,14 +20,21 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const [pendingImage, setPendingImage] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sending, setSending] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
   const imageInputRef = useRef(null);
+
+  // Opening a conversation (including the one passed in via
+  // selectedTargetUser on mount) clears its unread badge.
+  useEffect(() => {
+    if (activeUser) markMessagesRead(activeUser.id);
+  }, [activeUser?.id, markMessagesRead]);
 
   if (!currentUser) {
     return (
       <div className="p-8 bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl text-center space-y-4 max-w-md mx-auto my-12">
         <MessageSquare className="w-12 h-12 text-rose-500 mx-auto" />
         <h3 className="text-lg font-bold text-[var(--c-text)]">Acesse o Chat Direto</h3>
-        <p className="text-xs text-[var(--c-accent)]">Faça login para visualizar e trocar mensagens com membros PRÓ.</p>
+        <p className="text-xs text-[var(--c-accent)]">Faça login para visualizar e trocar mensagens com membros VIP.</p>
         <button
           onClick={() => setIsAuthModalOpen(true)}
           className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-lg transition"
@@ -37,11 +45,20 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
     );
   }
 
+  // Who currentUser has already exchanged messages with — the contacts
+  // list should only surface friends or people you've already talked to,
+  // not every user on the app.
+  const contactedUserIds = new Set(
+    messages
+      .filter(m => m.senderId === currentUser.id || m.receiverId === currentUser.id)
+      .map(m => (m.senderId === currentUser.id ? m.receiverId : m.senderId))
+  );
+
   // Filter contacts list
   const otherUsers = users.filter(u => u.id !== currentUser.id && (
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
-  ));
+  ) && (areFriends(currentUser.id, u.id) || contactedUserIds.has(u.id)));
 
   const handleOpenConversation = (u) => {
     setActiveUser(u);
@@ -123,9 +140,16 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
             <div className="flex items-center justify-center py-10 text-[var(--c-text-muted)]">
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
+          ) : otherUsers.length === 0 ? (
+            <div className="text-center py-12 px-4 space-y-1.5">
+              <MessageSquare className="w-8 h-8 text-[var(--c-text-faint)] mx-auto" />
+              <p className="text-xs font-semibold text-[var(--c-text-muted)]">Nenhuma conversa por aqui ainda.</p>
+              <p className="text-[11px] text-[var(--c-text-faint)]">Adicione amigos ou envie uma mensagem a partir do perfil de alguém para começar.</p>
+            </div>
           ) : otherUsers.map(u => {
             const isSelected = activeUser?.id === u.id;
             const lastMsg = getLastMessage(u);
+            const hasUnread = messages.some(m => m.senderId === u.id && m.receiverId === currentUser.id && !m.readAt);
 
             return (
               <button
@@ -139,19 +163,22 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
               >
                 <div className="flex items-center gap-2.5 overflow-hidden">
                   <div className="relative flex-shrink-0">
-                    <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-11 h-11 rounded-full object-cover ring-2 ring-rose-500/30" />
+                    <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-11 h-11 rounded-full object-cover border-2 border-rose-500/30" />
                     {u.isCouple && (
                       <span className="absolute -bottom-1 -right-1 text-[9px] bg-rose-600 text-white p-0.5 rounded-full">
                         ❤️
                       </span>
                     )}
+                    {hasUnread && (
+                      <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-rose-500 ring-2 ring-[var(--c-surface-2)]" />
+                    )}
                   </div>
 
                   <div className="overflow-hidden">
-                    <p className="text-xs font-bold text-[var(--c-text)] truncate flex items-center gap-1">
+                    <p className={`text-xs truncate flex items-center gap-1 ${hasUnread ? 'font-extrabold text-[var(--c-text)]' : 'font-bold text-[var(--c-text)]'}`}>
                       {u.name}
                     </p>
-                    <p className="text-[10px] text-[var(--c-accent)] truncate">
+                    <p className={`text-[10px] truncate ${hasUnread ? 'text-[var(--c-text)] font-semibold' : 'text-[var(--c-accent)]'}`}>
                       {lastMsg
                         ? (lastMsg.text || (lastMsg.mediaUrl ? '📷 Foto' : ''))
                         : `${u.isCouple ? 'Casal' : u.gender} • @${u.username}`}
@@ -228,7 +255,8 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                           <img
                             src={msg.mediaUrl}
                             alt="Foto enviada"
-                            className="max-w-full max-h-64 rounded-xl object-cover"
+                            onClick={() => setLightboxSrc(msg.mediaUrl)}
+                            className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
                           />
                         )}
                         {msg.text && <p className="leading-relaxed">{msg.text}</p>}
@@ -266,7 +294,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                       onClick={() => imageInputRef.current?.click()}
                       disabled={uploadingImage}
                       className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
-                      title="Enviar foto (recurso PRÓ)"
+                      title="Enviar foto (recurso VIP)"
                     >
                       {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
                     </button>
@@ -299,6 +327,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
         )}
       </div>
 
+      <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
   );
 };

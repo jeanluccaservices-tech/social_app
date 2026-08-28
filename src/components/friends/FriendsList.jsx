@@ -1,25 +1,29 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
+import { useToast } from '../../context/ToastContext';
 import { MatchTab } from './MatchTab';
 import { Avatar } from '../common/Avatar';
 import { isWithinRadius } from '../../lib/geo';
-import { GENDERS } from '../../lib/constants';
-import { Users, UserCheck, UserPlus, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal, Lock } from 'lucide-react';
+import { GENDERS, MIN_RADIUS_KM, MAX_RADIUS_KM, sanitizeRadiusInput, clampRadius } from '../../lib/constants';
+import { Users, UserCheck, UserPlus, UserX, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal, Lock } from 'lucide-react';
 
 export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
   const { friendships, contactsLoading, acceptFriendRequest, rejectFriendRequest, sendFriendRequest, removeFriend, getFriendshipStatus } = useSocial();
+  const { showToast } = useToast();
   const [tab, setTab] = useState('friends'); // 'friends' | 'requests' | 'explore' | 'match'
   const [exploreView, setExploreView] = useState('grid'); // 'grid' | 'list'
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Explore / Match filters
+  // Explore / Match filters — default to the preferences saved in Editar
+  // Perfil, so suggestions start already narrowed the way the person
+  // asked for; still freely adjustable per-session from here.
   const [showFilters, setShowFilters] = useState(false);
-  const [filterGenders, setFilterGenders] = useState([]);
-  const [filterAgeMin, setFilterAgeMin] = useState('');
-  const [filterAgeMax, setFilterAgeMax] = useState('');
-  const [filterRadiusKm, setFilterRadiusKm] = useState('');
+  const [filterGenders, setFilterGenders] = useState(() => currentUser?.preferences?.genders || []);
+  const [filterAgeMin, setFilterAgeMin] = useState(() => currentUser?.preferences?.ageMin ?? '');
+  const [filterAgeMax, setFilterAgeMax] = useState(() => currentUser?.preferences?.ageMax ?? '');
+  const [filterRadiusKm, setFilterRadiusKm] = useState(() => currentUser?.preferences?.radiusKm ?? '');
 
   const toggleFilterGender = (g) => {
     setFilterGenders(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
@@ -86,10 +90,35 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
     return true;
   });
 
+  // The swipe deck should never resurface someone you've already invited
+  // (or who's already a friend/pending) — exploreUsers deliberately keeps
+  // 'SENT' profiles (so the Explore grid can show "Enviado"), but Match
+  // needs the stricter list.
+  const matchCandidates = exploreUsers.filter(u => getFriendshipStatus(u.id) === 'NONE');
+
+  const hasActiveFilters = filterGenders.length > 0 || filterAgeMin || filterAgeMax || filterRadiusKm;
+
   const filteredList = (list) => list.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const filteredExplore = filteredList(exploreUsers);
+
+  const handleSendRequest = async (targetUserId) => {
+    const res = await sendFriendRequest(targetUserId);
+    showToast(res.success ? 'Convite enviado!' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleCancelRequest = async (targetUserId) => {
+    const res = await rejectFriendRequest(targetUserId);
+    showToast(res.success ? 'Convite cancelado.' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleMatchLike = async (targetUserId) => {
+    const res = await sendFriendRequest(targetUserId);
+    showToast(res.success ? 'Convite enviado!' : res.message, res.success ? 'success' : 'error');
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
@@ -155,7 +184,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             }`}
           >
             <Heart className="w-4 h-4" /> Match
-            <span className="text-[8px] bg-amber-500 text-black px-1.5 py-0.3 rounded-full font-black">PRÓ</span>
+            <span className="text-[8px] bg-amber-500 text-black px-1.5 py-0.3 rounded-full font-black">VIP</span>
           </button>
         </div>
       </div>
@@ -164,12 +193,16 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
       {(tab === 'explore' || tab === 'match') && (
         <div className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl shadow-lg overflow-hidden">
           <button
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => {
+              const closing = showFilters;
+              setShowFilters(!showFilters);
+              if (closing && hasActiveFilters) showToast('Filtros aplicados.', 'success');
+            }}
             className="w-full p-3.5 flex items-center justify-between text-xs font-bold text-[var(--c-text)]"
           >
             <span className="flex items-center gap-1.5">
               <SlidersHorizontal className="w-4 h-4 text-rose-500" /> Filtros
-              {(filterGenders.length > 0 || filterAgeMin || filterAgeMax || filterRadiusKm) && (
+              {hasActiveFilters && (
                 <span className="text-[9px] bg-rose-600 text-white px-1.5 py-0.3 rounded-full">Ativos</span>
               )}
             </span>
@@ -230,20 +263,24 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                   <input
                     type="number"
                     inputMode="numeric"
-                    min={1}
-                    max={500}
+                    min={MIN_RADIUS_KM}
+                    max={MAX_RADIUS_KM}
                     value={filterRadiusKm}
-                    onChange={(e) => setFilterRadiusKm(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    onChange={(e) => setFilterRadiusKm(sanitizeRadiusInput(e.target.value))}
+                    onBlur={(e) => setFilterRadiusKm(clampRadius(e.target.value))}
                     placeholder={`de ${currentUser.location || 'sua cidade'}`}
                     className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                   />
                 </div>
               </div>
 
-              {(filterGenders.length > 0 || filterAgeMin || filterAgeMax || filterRadiusKm) && (
+              {hasActiveFilters && (
                 <button
                   type="button"
-                  onClick={() => { setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm(''); }}
+                  onClick={() => {
+                    setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm('');
+                    showToast('Filtros removidos.', 'success');
+                  }}
                   className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition"
                 >
                   Limpar filtros
@@ -292,7 +329,10 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                     <MessageSquare className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => removeFriend(u.id)}
+                    onClick={async () => {
+                      const res = await removeFriend(u.id);
+                      showToast(res.success ? 'Amizade desfeita.' : res.message, res.success ? 'success' : 'error');
+                    }}
                     title="Desfazer amizade"
                     className="p-2 bg-[var(--c-overlay-5)] hover:bg-red-500/20 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl transition"
                   >
@@ -326,13 +366,19 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => acceptFriendRequest(u.id)}
+                    onClick={async () => {
+                      const res = await acceptFriendRequest(u.id);
+                      showToast(res.success ? `Vocês agora são amigos!` : res.message, res.success ? 'success' : 'error');
+                    }}
                     className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
                   >
                     <Check className="w-4 h-4" /> Aceitar
                   </button>
                   <button
-                    onClick={() => rejectFriendRequest(u.id)}
+                    onClick={async () => {
+                      const res = await rejectFriendRequest(u.id);
+                      showToast(res.success ? 'Convite recusado.' : res.message, res.success ? 'success' : 'error');
+                    }}
                     className="p-2 bg-[var(--c-overlay-10)] hover:bg-red-500/20 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl transition"
                   >
                     <X className="w-4 h-4" />
@@ -367,9 +413,41 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             </div>
           </div>
 
-          {exploreView === 'grid' ? (
+          {/* Results summary — always visible, so it's obvious the list
+              reflects the active filters even when nothing changes visually. */}
+          <p className="text-[11px] text-[var(--c-text-muted)] px-1">
+            {hasActiveFilters ? (
+              <>
+                <span className="font-semibold text-[var(--c-text-secondary)]">{filteredExplore.length}</span> {filteredExplore.length === 1 ? 'perfil encontrado' : 'perfis encontrados'} com os filtros aplicados.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-[var(--c-text-secondary)]">{filteredExplore.length}</span> {filteredExplore.length === 1 ? 'perfil disponível' : 'perfis disponíveis'} para explorar.
+              </>
+            )}
+          </p>
+
+          {filteredExplore.length === 0 ? (
+            <div className="text-center py-12 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl space-y-2">
+              <Sparkles className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
+              <p className="text-xs font-semibold text-[var(--c-text-muted)]">Nenhum perfil encontrado.</p>
+              {hasActiveFilters ? (
+                <>
+                  <p className="text-[11px] text-[var(--c-accent)]">Tente ajustar ou limpar os filtros para ver mais gente.</p>
+                  <button
+                    onClick={() => { setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm(''); showToast('Filtros removidos.', 'success'); }}
+                    className="mt-1 px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-xs font-bold text-[var(--c-text-secondary)] rounded-xl border border-[var(--c-border)] transition"
+                  >
+                    Limpar filtros
+                  </button>
+                </>
+              ) : (
+                <p className="text-[11px] text-[var(--c-accent)]">Volte mais tarde para ver novos perfis.</p>
+              )}
+            </div>
+          ) : exploreView === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {filteredList(exploreUsers).map(u => {
+              {filteredExplore.map(u => {
                 const status = getFriendshipStatus(u.id);
                 return (
                   <div key={u.id} className="bg-[var(--c-surface)] border border-[var(--c-border)] hover:border-rose-500/30 rounded-3xl overflow-hidden shadow-lg transition flex flex-col">
@@ -381,7 +459,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                         <h4 className="text-sm font-bold text-[var(--c-text)] truncate flex items-center gap-1.5">
                           {u.name}
                           {u.isCouple && <span className="text-xs text-rose-400">❤️</span>}
-                          {u.isPro && <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro PRÓ" />}
+                          {u.isPro && <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro VIP" />}
                         </h4>
                         <p className="text-[10px] text-[var(--c-accent)] flex items-center gap-1 mt-0.5">
                           <MapPin className="w-3 h-3" /> {u.isCouple ? 'Casal' : u.gender} • {u.location || 'Brasil'}
@@ -393,12 +471,15 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
 
                       <div className="mt-auto pt-2">
                         {status === 'SENT' ? (
-                          <div className="w-full py-1.5 bg-[var(--c-overlay-5)] border border-[var(--c-border)] text-[var(--c-text-muted)] rounded-xl text-xs font-semibold flex items-center justify-center gap-1">
-                            <Check className="w-3.5 h-3.5 text-emerald-400" /> Enviado
-                          </div>
+                          <button
+                            onClick={() => handleCancelRequest(u.id)}
+                            className="w-full py-1.5 bg-[var(--c-overlay-5)] hover:bg-red-500/10 border border-[var(--c-border)] hover:border-red-500/30 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1"
+                          >
+                            <UserX className="w-3.5 h-3.5" /> Cancelar convite
+                          </button>
                         ) : (
                           <button
-                            onClick={() => sendFriendRequest(u.id)}
+                            onClick={() => handleSendRequest(u.id)}
                             className="w-full py-1.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center justify-center gap-1.5"
                           >
                             <UserPlus className="w-3.5 h-3.5" /> Adicionar
@@ -412,17 +493,17 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredList(exploreUsers).map(u => {
+              {filteredExplore.map(u => {
                 const status = getFriendshipStatus(u.id);
                 return (
                   <div key={u.id} className="p-4 bg-[var(--c-surface)] border border-[var(--c-border)] hover:border-rose-500/30 rounded-3xl flex items-center justify-between gap-3 shadow-lg transition">
                     <div onClick={() => onSelectUser(u)} className="flex items-center gap-3 cursor-pointer overflow-hidden">
-                      <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-12 h-12 rounded-full object-cover ring-2 ring-rose-500/40 flex-shrink-0" />
+                      <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-12 h-12 rounded-full object-cover border-2 border-rose-500/40 flex-shrink-0" />
                       <div className="overflow-hidden">
                         <h4 className="text-sm font-bold text-[var(--c-text)] truncate flex items-center gap-1.5">
                           {u.name}
                           {u.isCouple && <span className="text-xs text-rose-400">❤️</span>}
-                          {u.isPro && <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro PRÓ" />}
+                          {u.isPro && <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro VIP" />}
                         </h4>
                         <p className="text-[10px] text-[var(--c-accent)]">
                           {u.isCouple ? 'Casal' : u.gender} • {u.location}
@@ -434,12 +515,15 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                     </div>
 
                     {status === 'SENT' ? (
-                      <span className="px-3 py-1.5 bg-[var(--c-overlay-5)] border border-[var(--c-border)] text-[var(--c-text-muted)] rounded-xl text-xs font-semibold flex items-center gap-1 flex-shrink-0">
-                        <Check className="w-3.5 h-3.5 text-emerald-400" /> Enviado
-                      </span>
+                      <button
+                        onClick={() => handleCancelRequest(u.id)}
+                        className="px-3.5 py-2 bg-[var(--c-overlay-5)] hover:bg-red-500/10 border border-[var(--c-border)] hover:border-red-500/30 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl text-xs font-semibold transition flex items-center gap-1 flex-shrink-0"
+                      >
+                        <UserX className="w-3.5 h-3.5" /> Cancelar convite
+                      </button>
                     ) : (
                       <button
-                        onClick={() => sendFriendRequest(u.id)}
+                        onClick={() => handleSendRequest(u.id)}
                         className="px-3.5 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5 flex-shrink-0"
                       >
                         <UserPlus className="w-3.5 h-3.5" /> Adicionar
@@ -457,24 +541,26 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
       {!contactsLoading && tab === 'match' && (
         currentUser.isPro ? (
           <MatchTab
-            candidates={exploreUsers}
-            onLike={sendFriendRequest}
+            candidates={matchCandidates}
+            onLike={handleMatchLike}
             onSelectUser={onSelectUser}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={() => { setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm(''); showToast('Filtros removidos.', 'success'); }}
           />
         ) : (
           <div className="p-8 bg-gradient-to-b from-amber-950/40 via-rose-950/30 to-[var(--c-surface)] border border-amber-500/30 rounded-3xl text-center space-y-4 max-w-md mx-auto shadow-2xl">
             <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center mx-auto text-amber-400 shadow-lg shadow-amber-500/20">
               <Lock className="w-7 h-7" />
             </div>
-            <h3 className="text-lg font-bold text-[var(--c-text)]">Match Exclusivo PRÓ</h3>
+            <h3 className="text-lg font-bold text-[var(--c-text)]">Match Exclusivo VIP</h3>
             <p className="text-xs text-[var(--c-accent)]">
-              O modo Match (swipe) é um recurso exclusivo para membros com <strong className="text-[var(--c-pro-text)]">Conta PRÓ</strong>. Assine para curtir e encontrar novas conexões.
+              O modo Match (swipe) é um recurso exclusivo para membros com <strong className="text-[var(--c-pro-text)]">Conta VIP</strong>. Assine para curtir e encontrar novas conexões.
             </p>
             <button
               onClick={() => setIsProModalOpen(true)}
               className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2"
             >
-              <Sparkles className="w-4 h-4 fill-black" /> Desbloquear com Conta PRÓ
+              <Sparkles className="w-4 h-4 fill-black" /> Desbloquear com Conta VIP
             </button>
           </div>
         )

@@ -30,6 +30,19 @@ export const clampAge = (raw) => {
   return String(Math.min(MAX_AGE, Math.max(MIN_AGE, n)));
 };
 
+// Same idea as the age fields above, for the "how far" preference/filter.
+export const MIN_RADIUS_KM = 1;
+export const MAX_RADIUS_KM = 9999;
+
+export const sanitizeRadiusInput = (raw) => raw.replace(/\D/g, '').slice(0, 4);
+
+export const clampRadius = (raw) => {
+  if (raw === '') return raw;
+  const n = Number(raw);
+  if (Number.isNaN(n)) return '';
+  return String(Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, n)));
+};
+
 const isoDate = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
 

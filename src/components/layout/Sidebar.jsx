@@ -7,7 +7,7 @@ import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame } from 'lucide-
 
 export const Sidebar = ({ activeTab, setActiveTab }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
-  const { friendships } = useSocial();
+  const { friendships, unreadMessageCount } = useSocial();
 
   // Calculate pending friend requests count
   const pendingRequestsCount = currentUser
@@ -16,8 +16,8 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
 
   const navItems = [
     { id: 'feed', label: 'Feed & Mídias', icon: Rss, badge: null },
-    { id: 'groups', label: 'Salas de Grupos PRÓ', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
-    { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: null },
+    { id: 'groups', label: 'Salas de Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
+    { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: unreadMessageCount > 0 ? unreadMessageCount : null, badgeColor: 'bg-rose-600 text-white' },
     { id: 'friends', label: 'Amigos & Convites', icon: Users, badge: pendingRequestsCount > 0 ? pendingRequestsCount : null, badgeColor: 'bg-rose-600 text-white' },
     { id: 'profile', label: 'Meu Perfil', icon: User, badge: null }
   ];
@@ -85,7 +85,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
                 <span className={`font-bold flex items-center gap-1 ${currentUser.isPro ? 'text-amber-400' : 'text-[var(--c-text-secondary)]'}`}>
                   {currentUser.isPro ? (
                     <>
-                      <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" /> VIP PRÓ
+                      <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" /> VIP
                     </>
                   ) : (
                     'Gratuito'
@@ -108,7 +108,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
                 onClick={() => setIsProModalOpen(true)}
                 className="w-full py-2 bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-extrabold text-xs rounded-xl shadow-md transition transform hover:-translate-y-0.5 flex items-center justify-center gap-1.5"
               >
-                <Sparkles className="w-3.5 h-3.5 fill-black" /> Assinar VIP PRÓ
+                <Sparkles className="w-3.5 h-3.5 fill-black" /> Assinar VIP
               </button>
             )}
           </div>

@@ -164,3 +164,18 @@ input, textarea, p, span, h1, h2, h3, h4, h5, h6 {
     animation: none;
   }
 }
+
+@keyframes toastIn {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-toast-in {
+  animation: toastIn 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in {
+    animation: none;
+  }
+}

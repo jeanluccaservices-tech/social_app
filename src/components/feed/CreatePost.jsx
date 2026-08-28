@@ -1,13 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
+import { useToast } from '../../context/ToastContext';
 import { uploadImage } from '../../lib/storage';
+import { watermarkImage } from '../../lib/watermark';
 import { Avatar } from '../common/Avatar';
-import { Image, Send, Sparkles, Loader2, X } from 'lucide-react';
+import { Image, Send, Sparkles, Loader2, X, ShieldAlert } from 'lucide-react';
 
 export const CreatePost = () => {
   const { currentUser, setIsAuthModalOpen } = useAuth();
   const { createPost } = useSocial();
+  const { showToast } = useToast();
 
   const [content, setContent] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
@@ -20,7 +23,13 @@ export const CreatePost = () => {
     if (!file || !currentUser) return;
     setUploading(true);
     try {
-      const url = await uploadImage('media', currentUser.id, file);
+      let toUpload = file;
+      try {
+        toUpload = await watermarkImage(file);
+      } catch {
+        // watermarking failed (e.g. unsupported format) — post the original photo rather than blocking
+      }
+      const url = await uploadImage('media', currentUser.id, toUpload);
       setMediaUrl(url);
     } catch {
       // upload failed silently; user can retry
@@ -39,13 +48,18 @@ export const CreatePost = () => {
     if (!content.trim() && !mediaUrl) return;
 
     setPosting(true);
-    await createPost({
+    const res = await createPost({
       type: mediaUrl ? 'photo' : 'text',
       content,
       mediaUrl
     });
     setPosting(false);
 
+    if (!res.success) {
+      showToast(res.message, 'error');
+      return;
+    }
+    showToast('Publicado com sucesso!', 'success');
     setContent('');
     setMediaUrl('');
   };
@@ -84,7 +98,7 @@ export const CreatePost = () => {
               )}
             </span>
             {currentUser.isPro && (
-              <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" title="Membro PRÓ" />
+              <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" title="Membro VIP" />
             )}
           </div>
 
@@ -115,6 +129,11 @@ export const CreatePost = () => {
       )}
 
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+
+      <p className="flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--c-text-faint)]">
+        <ShieldAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
+        Não são permitidos conteúdos com menores de idade, crimes sexuais, drogas ou outras ilegalidades. Ao publicar, você é o único responsável pelo conteúdo.
+      </p>
 
       {/* Action Footer */}
       <div className="flex items-center justify-between pt-2 border-t border-[var(--c-border-soft)]">

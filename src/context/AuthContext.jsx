@@ -243,6 +243,39 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  // Re-authenticates with the current password before changing it — the
+  // client SDK's updateUser() doesn't require this on its own since the
+  // session is already valid, but skipping it would let anyone with an
+  // unlocked device change the password with no proof of knowing it.
+  const changePassword = async (currentPassword, newPassword) => {
+    if (!session?.user?.email) return { success: false, message: 'Nenhuma conta ativa.' };
+    if (newPassword.length < 6) return { success: false, message: 'A nova senha deve ter pelo menos 6 caracteres.' };
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: session.user.email,
+      password: currentPassword
+    });
+    if (verifyError) return { success: false, message: 'Senha atual incorreta.' };
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { success: false, message: mapAuthError(error) };
+    return { success: true };
+  };
+
+  // Permanently deletes the account: archives the id/username into
+  // deleted_accounts, then removes the auth user, which cascades through
+  // every table with a profiles(id) FK (posts, comments, messages in both
+  // directions, friendships, group rooms, notifications...).
+  const deleteAccount = async () => {
+    if (!currentUser) return { success: false, message: 'Nenhuma conta ativa.' };
+    const { error } = await supabase.rpc('delete_own_account');
+    if (error) return { success: false, message: 'Não foi possível excluir a conta. Tente novamente.' };
+    await supabase.auth.signOut();
+    setSession(null);
+    setCurrentUser(null);
+    return { success: true };
+  };
+
   return (
     <AuthContext.Provider value={{
       currentUser,
@@ -257,6 +290,9 @@ export const AuthProvider = ({ children }) => {
       loggingOut,
       refreshCurrentUser,
       updateProfile,
+      changePassword,
+      deleteAccount,
+      fetchUsers,
       isAuthModalOpen,
       setIsAuthModalOpen,
       isProModalOpen,

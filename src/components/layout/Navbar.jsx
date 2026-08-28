@@ -1,14 +1,33 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Avatar } from '../common/Avatar';
 import { SupportButton } from '../common/SupportButton';
 import { NotificationsBell } from './NotificationsBell';
-import { Heart, Sparkles, LogOut, Sun, Moon, Loader2 } from 'lucide-react';
+import { Heart, Sparkles, LogOut, Sun, Moon, Loader2, MoreVertical } from 'lucide-react';
 
 export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen, logout, loggingOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close the overflow menu on outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [menuOpen]);
 
   return (
     <header className="sticky top-0 z-40 bg-[var(--c-surface-2)]/90 backdrop-blur-xl border-b border-rose-500/20 px-3 lg:px-8 py-2.5">
@@ -28,17 +47,6 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
 
         {/* Right Section Actions */}
         <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-          <SupportButton className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-text-muted)] hover:text-rose-400 transition p-2" />
-
-          {/* Theme Toggle */}
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
-            className="p-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-
           {currentUser && <NotificationsBell onOpenProfile={onOpenProfile} onOpenFriends={onOpenFriends} />}
 
           {/* PRO Badge / Upgrade Button */}
@@ -49,7 +57,7 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40 rounded-xl text-[var(--c-pro-text)] text-xs font-bold shadow-lg shadow-amber-500/10 cursor-pointer hover:bg-amber-500/30 transition"
               >
                 <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400 animate-spin-slow" />
-                <span>VIP PRÓ</span>
+                <span className="hidden sm:inline">VIP</span>
               </div>
             ) : (
               <button
@@ -57,38 +65,27 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition transform hover:scale-105 active:scale-95"
               >
                 <Sparkles className="w-4 h-4 fill-black" />
-                <span>Virar PRÓ</span>
+                <span className="hidden sm:inline">Virar VIP</span>
               </button>
             )
           ) : null}
 
           {/* User Auth Profile */}
           {currentUser ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onOpenProfile}
-                className="flex items-center gap-2 p-1 pl-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-full transition"
-              >
-                <Avatar
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                  isCouple={currentUser.isCouple}
-                  className="w-7 h-7 rounded-full object-cover ring-2 ring-rose-500/50"
-                />
-                <span className="text-xs font-bold text-[var(--c-text)] pr-2 hidden lg:inline max-w-[100px] truncate">
-                  {currentUser.name}
-                </span>
-              </button>
-
-              <button
-                onClick={logout}
-                disabled={loggingOut}
-                title="Sair da conta"
-                className="p-2 text-[var(--c-text-muted)] hover:text-red-400 hover:bg-red-500/10 rounded-xl transition disabled:opacity-60"
-              >
-                {loggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-              </button>
-            </div>
+            <button
+              onClick={onOpenProfile}
+              className="flex items-center gap-2 p-1 pl-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-full transition"
+            >
+              <Avatar
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                isCouple={currentUser.isCouple}
+                className="w-7 h-7 rounded-full object-cover ring-2 ring-rose-500/50"
+              />
+              <span className="text-xs font-bold text-[var(--c-text)] pr-2 hidden lg:inline max-w-[100px] truncate">
+                {currentUser.name}
+              </span>
+            </button>
           ) : (
             <button
               onClick={() => setIsAuthModalOpen(true)}
@@ -97,6 +94,51 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
               Entrar / Cadastrar
             </button>
           )}
+
+          {/* Overflow menu: support, theme toggle, and logout live here so
+              the header stays compact on mobile instead of overflowing. */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+              title="Mais opções"
+              className="p-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-text-secondary)] transition"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 mt-2 w-56 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-2xl shadow-2xl shadow-black/20 overflow-hidden z-50">
+                <button
+                  onClick={() => { toggleTheme(); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition text-left"
+                >
+                  {theme === 'dark' ? <Sun className="w-4 h-4 text-[var(--c-accent)]" /> : <Moon className="w-4 h-4 text-[var(--c-accent)]" />}
+                  {theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+                </button>
+
+                <SupportButton
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition"
+                  onClick={() => setMenuOpen(false)}
+                />
+
+                {currentUser && (
+                  <>
+                    <div className="h-px bg-[var(--c-border)]" />
+                    <button
+                      onClick={() => { setMenuOpen(false); logout(); }}
+                      disabled={loggingOut}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition text-left disabled:opacity-60"
+                    >
+                      {loggingOut ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                      Sair da conta
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

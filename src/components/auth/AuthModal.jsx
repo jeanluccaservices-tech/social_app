@@ -6,6 +6,13 @@ import { GENDERS, MIN_AGE, MAX_AGE, sanitizeAgeInput, clampAge, MIN_BIRTH_DATE, 
 import { CitySelect } from '../common/CitySelect';
 import { SupportButton } from '../common/SupportButton';
 
+// A resend costs Resend/GoTrue quota and can be used to spam an inbox, so
+// it's throttled: a 3-minute wait between sends, and at most 3 codes total
+// per registration attempt — the automatic one sent at signup plus 2
+// manual resends.
+const RESEND_COOLDOWN_SECONDS = 180;
+const MAX_MANUAL_RESENDS = 2;
+
 export const AuthModal = () => {
   const { isAuthModalOpen, setIsAuthModalOpen, login, register, verifySignup, resendVerification } = useAuth();
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'verify'
@@ -17,6 +24,7 @@ export const AuthModal = () => {
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendCount, setResendCount] = useState(0);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -164,8 +172,9 @@ export const AuthModal = () => {
       setPendingVerifyEmail(regEmail);
       setVerifyCode('');
       setMode('verify');
-      setInfoMsg('Cadastro criado! Enviamos um código de verificação para o seu e-mail.');
-      setResendCooldown(30);
+      setInfoMsg('Cadastro criado! Enviamos um código de verificação para o seu e-mail — confira a caixa de entrada principal e também a pasta de spam/lixo eletrônico.');
+      setResendCount(0);
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } else {
       setInfoMsg('Cadastro criado com sucesso!');
     }
@@ -191,7 +200,7 @@ export const AuthModal = () => {
   };
 
   const handleResendCode = async () => {
-    if (resendCooldown > 0 || isSubmitting) return;
+    if (resendCooldown > 0 || isSubmitting || resendCount >= MAX_MANUAL_RESENDS) return;
     setErrorMsg('');
     setInfoMsg('');
     setIsSubmitting(true);
@@ -199,8 +208,9 @@ export const AuthModal = () => {
     setIsSubmitting(false);
 
     if (res.success) {
-      setInfoMsg('Novo código enviado! Verifique seu e-mail.');
-      setResendCooldown(30);
+      setResendCount((c) => c + 1);
+      setInfoMsg('Novo código enviado! Confira a caixa de entrada principal e também o spam.');
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } else {
       setErrorMsg(res.message);
     }
@@ -284,6 +294,9 @@ export const AuthModal = () => {
                   <span className="font-semibold text-[var(--c-text)]">{pendingVerifyEmail}</span>.
                   Digite-o abaixo para confirmar sua conta.
                 </p>
+                <p className="text-[11px] text-[var(--c-text-muted)]">
+                  Não achou o e-mail? Confira a caixa de entrada principal e também a pasta de spam/lixo eletrônico.
+                </p>
               </div>
 
               <input
@@ -306,14 +319,23 @@ export const AuthModal = () => {
                 {isSubmitting ? 'Verificando...' : 'Confirmar Código'}
               </button>
 
-              <button
-                type="button"
-                onClick={handleResendCode}
-                disabled={resendCooldown > 0 || isSubmitting}
-                className="w-full text-xs font-semibold text-rose-400 hover:text-rose-300 disabled:opacity-50 disabled:pointer-events-none transition"
-              >
-                {resendCooldown > 0 ? `Reenviar código em ${resendCooldown}s` : 'Reenviar código'}
-              </button>
+              {resendCount >= MAX_MANUAL_RESENDS ? (
+                <p className="text-[11px] text-center text-[var(--c-text-muted)]">
+                  O máximo de códigos já foi enviado. Verifique seu e-mail e a pasta de spam, ou{' '}
+                  <SupportButton className="text-rose-400 hover:text-rose-300 underline underline-offset-2" />.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={resendCooldown > 0 || isSubmitting}
+                  className="w-full text-xs font-semibold text-rose-400 hover:text-rose-300 disabled:opacity-50 disabled:pointer-events-none transition"
+                >
+                  {resendCooldown > 0
+                    ? `Reenviar código em ${String(Math.floor(resendCooldown / 60)).padStart(1, '0')}:${String(resendCooldown % 60).padStart(2, '0')}`
+                    : 'Reenviar código'}
+                </button>
+              )}
 
               <button
                 type="button"

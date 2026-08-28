@@ -138,8 +138,8 @@ export const ProModal = () => {
   if (!isProModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-      <div className="relative w-full max-w-lg bg-[var(--c-surface)] border border-amber-500/40 rounded-3xl shadow-2xl shadow-amber-500/20 overflow-hidden p-6 my-8">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-[var(--c-surface)] border border-amber-500/40 rounded-3xl shadow-2xl shadow-amber-500/20 overflow-hidden p-6 my-auto">
 
         {/* Glow Effects */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -167,7 +167,7 @@ export const ProModal = () => {
             <Crown className="w-7 h-7 text-black fill-current" />
           </div>
           <h2 className="font-display text-2xl font-semibold italic text-[var(--c-text)] tracking-tight flex items-center justify-center gap-2">
-            LoveVibe <span className="text-amber-400">VIP PRÓ</span>
+            LoveVibe <span className="text-amber-400">VIP</span>
           </h2>
           <p className="text-xs text-[var(--c-pro-text)] mt-1">Conexões sem limites e recursos exclusivos para solteiros e casais</p>
         </div>
@@ -225,7 +225,7 @@ export const ProModal = () => {
         ) : view === 'pix-paid' ? (
           <div className="text-center space-y-3 py-4">
             <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto" />
-            <p className="text-sm font-bold text-[var(--c-text)]">Pagamento confirmado! Sua conta já é VIP PRÓ.</p>
+            <p className="text-sm font-bold text-[var(--c-text)]">Pagamento confirmado! Sua conta já é VIP.</p>
             <button
               onClick={resetAndClose}
               className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold text-xs rounded-xl transition"
@@ -239,7 +239,7 @@ export const ProModal = () => {
             {isPro ? (
               <div className="p-4 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50 rounded-2xl text-center space-y-2 mb-4">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-black text-xs font-extrabold rounded-full shadow-md">
-                  <ShieldCheck className="w-4 h-4 fill-black" /> Assinatura VIP PRÓ Ativa
+                  <ShieldCheck className="w-4 h-4 fill-black" /> Assinatura VIP Ativa
                 </div>
                 {currentUser?.proExpiresAt && (
                   <p className="text-xs text-[var(--c-text)] font-semibold flex items-center justify-center gap-1.5">
@@ -248,12 +248,12 @@ export const ProModal = () => {
                   </p>
                 )}
                 <p className="text-[10px] text-[var(--c-pro-text)]">
-                  * A renovação NÃO é automática. Depois dessa data e hora, para continuar com os benefícios PRÓ você precisa assinar novamente.
+                  * A renovação NÃO é automática. Depois dessa data e hora, para continuar com os benefícios VIP você precisa assinar novamente.
                 </p>
               </div>
             ) : (
               <div className="p-4 bg-gradient-to-r from-amber-950/40 via-yellow-950/40 to-amber-950/40 border border-amber-500/30 rounded-2xl text-center mb-4 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-amber-400 font-extrabold">Acesso PRÓ mensal</span>
+                <span className="text-[10px] uppercase tracking-widest text-amber-400 font-extrabold">Acesso VIP mensal</span>
                 <div className="flex items-baseline justify-center gap-1">
                   <span className="text-3xl font-black text-[var(--c-text)]">R$ 24,90</span>
                   <span className="text-xs text-[var(--c-pro-text)]">/ mês</span>
@@ -269,16 +269,16 @@ export const ProModal = () => {
               {[
                 {
                   title: 'Envie Mensagens no Chat Direto',
-                  desc: 'Apenas membros PRÓ podem enviar mensagens diretas para qualquer pessoa da rede.',
+                  desc: 'Apenas membros VIP podem enviar mensagens diretas para qualquer pessoa da rede.',
                   icon: MessageSquare
                 },
                 {
                   title: 'Envie Fotos no Chat Privado',
-                  desc: 'Membros PRÓ podem compartilhar fotos diretamente nas conversas privadas, não só texto.',
+                  desc: 'Membros VIP podem compartilhar fotos diretamente nas conversas privadas, não só texto.',
                   icon: ImageIcon
                 },
                 {
-                  title: 'Salas de Grupos Exclusivas para Membros PRÓ',
+                  title: 'Salas de Grupos Exclusivas para Membros VIP',
                   desc: 'Visualize e participe de bate-papos coletivos para casais, enofilia, viagens e festas.',
                   icon: Users
                 },
@@ -289,7 +289,7 @@ export const ProModal = () => {
                 },
                 {
                   title: 'Selo Dourado de Destaque no Feed',
-                  desc: 'Ganhe destaque oficial PRÓ em suas publicações e no chat.',
+                  desc: 'Ganhe destaque oficial VIP em suas publicações e no chat.',
                   icon: Crown
                 }
               ].map((item, idx) => {
@@ -317,7 +317,7 @@ export const ProModal = () => {
                   <p className="text-[11px] text-center text-red-400 font-medium">{errorMsg}</p>
                 )}
                 <p className="text-[10px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider text-center">
-                  Assinar Plano VIP PRÓ (R$ 24,90) — Escolha a forma de pagamento
+                  Assinar Plano VIP (R$ 24,90) — Escolha a forma de pagamento
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button

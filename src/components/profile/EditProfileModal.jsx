@@ -1,20 +1,34 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { stripEmojis } from '../../utils/text';
 import { uploadImage } from '../../lib/storage';
-import { X, Camera, Image as ImageIcon, MapPin, Target, Users, Save, Loader2, Cake, Navigation, Lock, Info } from 'lucide-react';
+import { X, Camera, Image as ImageIcon, MapPin, Target, Users, Save, Loader2, Cake, Navigation, Lock, Info, KeyRound, AlertTriangle, Check } from 'lucide-react';
 import {
   GENDERS, MIN_AGE, MAX_AGE, sanitizeAgeInput, clampAge, MIN_BIRTH_DATE, MAX_BIRTH_DATE,
-  SEXUAL_ORIENTATIONS, MARITAL_STATUSES, SMOKE_DRINK_OPTIONS
+  SEXUAL_ORIENTATIONS, MARITAL_STATUSES, SMOKE_DRINK_OPTIONS,
+  MIN_RADIUS_KM, MAX_RADIUS_KM, sanitizeRadiusInput, clampRadius
 } from '../../lib/constants';
 import { CitySelect } from '../common/CitySelect';
 import { Avatar } from '../common/Avatar';
 
 export const EditProfileModal = ({ isOpen, onClose, user }) => {
-  const { updateProfile } = useAuth();
+  const { updateProfile, changePassword, deleteAccount } = useAuth();
+  const { showToast } = useToast();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState(null); // { type: 'error' | 'success', text }
+
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const [avatar, setAvatar] = useState(user?.avatar || '');
   const [cover, setCover] = useState(user?.cover || '');
@@ -106,6 +120,46 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
     onClose();
   };
 
+  const handleChangePassword = async () => {
+    setPasswordMsg(null);
+    if (!currentPassword || !newPassword) {
+      setPasswordMsg({ type: 'error', text: 'Preencha a senha atual e a nova senha.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMsg({ type: 'error', text: 'A confirmação não confere com a nova senha.' });
+      return;
+    }
+
+    setChangingPassword(true);
+    const res = await changePassword(currentPassword, newPassword);
+    setChangingPassword(false);
+
+    if (!res.success) {
+      setPasswordMsg({ type: 'error', text: res.message });
+      return;
+    }
+    setPasswordMsg({ type: 'success', text: 'Senha alterada com sucesso!' });
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'EXCLUIR') return;
+    setDeleteError('');
+    setDeletingAccount(true);
+    const res = await deleteAccount();
+    setDeletingAccount(false);
+
+    if (!res.success) {
+      setDeleteError(res.message);
+      return;
+    }
+    showToast('Sua conta foi excluída definitivamente. Essa ação não pode ser desfeita.', 'success');
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-lg bg-[var(--c-surface)] border border-rose-500/30 rounded-3xl shadow-2xl shadow-rose-950/50 overflow-hidden my-8">
@@ -118,8 +172,7 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
 
         {/* Cover + Avatar preview with change controls */}
         <div className="relative h-36 bg-gradient-to-r from-rose-950 to-purple-950">
-          {cover && <img src={cover} alt="Capa" className="w-full h-full object-cover opacity-70" />}
-          <div className="absolute inset-0 bg-gradient-to-t from-[var(--c-surface)] via-transparent to-black/30"></div>
+          {cover && <img src={cover} alt="Capa" className="w-full h-full object-cover" />}
           <button
             type="button"
             onClick={() => coverInputRef.current?.click()}
@@ -293,10 +346,11 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
                 <input
                   type="number"
                   inputMode="numeric"
-                  min={1}
-                  max={500}
+                  min={MIN_RADIUS_KM}
+                  max={MAX_RADIUS_KM}
                   value={prefRadiusKm}
-                  onChange={(e) => setPrefRadiusKm(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  onChange={(e) => setPrefRadiusKm(sanitizeRadiusInput(e.target.value))}
+                  onBlur={(e) => setPrefRadiusKm(clampRadius(e.target.value))}
                   className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500"
                 />
                 <span className="absolute right-3 top-1.5 text-[10px] text-[var(--c-text-muted)] font-semibold">km</span>
@@ -361,6 +415,109 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
                 </select>
               </div>
             </div>
+          </div>
+
+          {/* Change Password — independent of the profile-info save above */}
+          <div className="p-3 bg-[var(--c-surface-2)] border border-[var(--c-border)] rounded-2xl space-y-3">
+            <span className="text-[var(--c-accent)] font-bold text-xs flex items-center gap-1.5">
+              <KeyRound className="w-4 h-4" /> Alterar Senha
+            </span>
+
+            <div className="grid grid-cols-1 gap-2">
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Senha atual"
+                autoComplete="current-password"
+                className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Nova senha (mín. 6 caracteres)"
+                autoComplete="new-password"
+                className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
+              />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirmar nova senha"
+                autoComplete="new-password"
+                className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            {passwordMsg && (
+              <p className={`text-[11px] font-medium flex items-center gap-1 ${passwordMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {passwordMsg.type === 'success' && <Check className="w-3.5 h-3.5" />}
+                {passwordMsg.text}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleChangePassword}
+              disabled={changingPassword}
+              className="w-full py-2.5 bg-[var(--c-overlay-10)] hover:bg-[var(--c-overlay-20)] text-[var(--c-text)] font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 disabled:opacity-60"
+            >
+              {changingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+              {changingPassword ? 'Alterando...' : 'Alterar Senha'}
+            </button>
+          </div>
+
+          {/* Danger Zone — permanent account deletion */}
+          <div className="p-3 bg-red-950/20 border border-red-500/30 rounded-2xl space-y-2.5">
+            <span className="text-red-400 font-bold text-xs flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4" /> Excluir Conta
+            </span>
+            <p className="text-[10px] text-[var(--c-text-muted)] leading-relaxed">
+              Isso apaga permanentemente seu perfil, publicações, comentários e conversas. Essa ação não pode ser desfeita.
+            </p>
+
+            {!confirmingDelete ? (
+              <button
+                type="button"
+                onClick={() => { setConfirmingDelete(true); setDeleteError(''); setDeleteConfirmText(''); }}
+                className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-400 font-bold text-xs rounded-xl transition"
+              >
+                Excluir minha conta
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <label className="block text-[10px] text-red-300">
+                  Digite <span className="font-mono font-bold">EXCLUIR</span> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="EXCLUIR"
+                  className="w-full bg-[var(--c-surface-3)] border border-red-500/40 rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-red-500"
+                />
+                {deleteError && <p className="text-[11px] text-red-400 font-medium">{deleteError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="flex-1 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-[var(--c-text)] font-bold text-xs rounded-xl border border-[var(--c-border)] transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deleteConfirmText !== 'EXCLUIR' || deletingAccount}
+                    className="flex-1 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {deletingAccount ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                    {deletingAccount ? 'Excluindo...' : 'Confirmar exclusão'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 pt-2">
