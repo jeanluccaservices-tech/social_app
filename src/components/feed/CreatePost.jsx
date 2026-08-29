@@ -2,10 +2,11 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { useToast } from '../../context/ToastContext';
-import { uploadImage } from '../../lib/storage';
+import { useMultiImageUpload } from '../../lib/useMultiImageUpload';
 import { watermarkImage } from '../../lib/watermark';
 import { Avatar } from '../common/Avatar';
-import { Image, Send, Sparkles, Loader2, X, ShieldAlert } from 'lucide-react';
+import { CameraCapture } from '../common/CameraCapture';
+import { Image, Camera, Send, Sparkles, Loader2, X, ShieldAlert } from 'lucide-react';
 
 export const CreatePost = () => {
   const { currentUser, setIsAuthModalOpen } = useAuth();
@@ -13,30 +14,24 @@ export const CreatePost = () => {
   const { showToast } = useToast();
 
   const [content, setContent] = useState('');
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentUser) return;
-    setUploading(true);
-    try {
-      let toUpload = file;
-      try {
-        toUpload = await watermarkImage(file);
-      } catch {
-        // watermarking failed (e.g. unsupported format) — post the original photo rather than blocking
-      }
-      const url = await uploadImage('media', currentUser.id, toUpload);
-      setMediaUrl(url);
-    } catch {
-      // upload failed silently; user can retry
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
+  const { images, addFiles, removeImage, reset, isUploading, readyUrls } = useMultiImageUpload(
+    'media',
+    currentUser?.id,
+    { watermark: watermarkImage }
+  );
+
+  const handleFileChange = (e) => {
+    addFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleCameraCapture = (files) => {
+    setCameraOpen(false);
+    addFiles(files);
   };
 
   const handleSubmit = async (e) => {
@@ -45,23 +40,34 @@ export const CreatePost = () => {
       setIsAuthModalOpen(true);
       return;
     }
-    if (!content.trim() && !mediaUrl) return;
+    if (!content.trim() && readyUrls.length === 0) return;
+    if (isUploading) return;
 
     setPosting(true);
-    const res = await createPost({
-      type: mediaUrl ? 'photo' : 'text',
-      content,
-      mediaUrl
-    });
+    // More than one photo becomes one post per photo — the schema has a
+    // single media_url per post, not an array/album. The typed text rides
+    // along with only the first one so it doesn't repeat N times.
+    const urls = readyUrls.length > 0 ? readyUrls : [null];
+    let successCount = 0;
+    let lastError = null;
+    for (let i = 0; i < urls.length; i++) {
+      const res = await createPost({
+        type: urls[i] ? 'photo' : 'text',
+        content: i === 0 ? content : '',
+        mediaUrl: urls[i]
+      });
+      if (res.success) successCount++;
+      else lastError = res.message;
+    }
     setPosting(false);
 
-    if (!res.success) {
-      showToast(res.message, 'error');
+    if (successCount === 0) {
+      showToast(lastError || 'Não foi possível publicar. Tente novamente.', 'error');
       return;
     }
-    showToast('Publicado com sucesso!', 'success');
+    showToast(successCount > 1 ? `${successCount} fotos publicadas!` : 'Publicado com sucesso!', 'success');
     setContent('');
-    setMediaUrl('');
+    reset();
   };
 
   if (!currentUser) {
@@ -115,20 +121,34 @@ export const CreatePost = () => {
         </div>
       </div>
 
-      {mediaUrl && (
-        <div className="relative w-full max-h-48 overflow-hidden rounded-xl">
-          <img src={mediaUrl} alt="Pré-visualização" className="w-full max-h-48 object-cover" />
-          <button
-            type="button"
-            onClick={() => setMediaUrl('')}
-            className="absolute top-2 right-2 bg-black/70 hover:bg-black text-white rounded-full p-1 transition"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+      {images.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {images.map((img) => (
+            <div key={img.id} className="relative flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border border-[var(--c-border)]">
+              <img src={img.previewUrl} alt="Pré-visualização" className="w-full h-full object-cover" />
+              {img.uploading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 text-white animate-spin" />
+                </div>
+              )}
+              {img.error && (
+                <div className="absolute inset-0 bg-red-950/70 flex items-center justify-center text-[9px] text-red-200 font-bold text-center p-1">
+                  Falhou
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeImage(img.id)}
+                className="absolute top-1 right-1 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
-      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
 
       <p className="flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--c-text-faint)]">
         <ShieldAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
@@ -137,25 +157,38 @@ export const CreatePost = () => {
 
       {/* Action Footer */}
       <div className="flex items-center justify-between pt-2 border-t border-[var(--c-border-soft)]">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition disabled:opacity-60"
-        >
-          {uploading ? <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> : <Image className="w-4 h-4 text-emerald-400" />}
-          <span>{uploading ? 'Enviando...' : mediaUrl ? 'Trocar Foto' : 'Adicionar Foto'}</span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition"
+          >
+            <Image className="w-4 h-4 text-emerald-400" />
+            <span>Galeria</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCameraOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition"
+          >
+            <Camera className="w-4 h-4 text-emerald-400" />
+            <span>Câmera</span>
+          </button>
+        </div>
 
         <button
           onClick={handleSubmit}
-          disabled={posting}
+          disabled={posting || isUploading}
           className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/30 transition transform hover:scale-105 active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
         >
-          {posting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          <span>{posting ? 'Publicando...' : 'Publicar'}</span>
+          {posting || isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+          <span>{posting ? 'Publicando...' : isUploading ? 'Enviando fotos...' : 'Publicar'}</span>
         </button>
       </div>
+
+      {cameraOpen && (
+        <CameraCapture onCapture={handleCameraCapture} onClose={() => setCameraOpen(false)} />
+      )}
     </div>
   );
 };

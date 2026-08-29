@@ -5,7 +5,7 @@ import { Avatar } from '../common/Avatar';
 import { formatFullDateTime } from '../../utils/time';
 import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame } from 'lucide-react';
 
-export const Sidebar = ({ activeTab, setActiveTab }) => {
+export const Sidebar = ({ activeTab, setActiveTab, isOwnProfileActive, onOpenOwnProfile }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
   const { friendships, unreadMessageCount } = useSocial();
 
@@ -29,13 +29,13 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
         <p className="text-[11px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider px-3 mb-2">Menu Principal</p>
 
         {navItems.map(item => {
-          const isActive = activeTab === item.id;
+          const isActive = item.id === 'profile' ? isOwnProfileActive : activeTab === item.id;
           const Icon = item.icon;
 
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => item.id === 'profile' ? onOpenOwnProfile() : setActiveTab(item.id)}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                 isActive
                   ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-lg shadow-rose-600/30'

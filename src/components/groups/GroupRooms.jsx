@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
-import { uploadImage } from '../../lib/storage';
+import { useMultiImageUpload } from '../../lib/useMultiImageUpload';
 import { MediaLightbox } from '../common/MediaLightbox';
+import { CameraCapture } from '../common/CameraCapture';
 import { formatClockTime } from '../../utils/time';
 import {
   Sparkles, Lock, Send, Users, Flame, ArrowLeft, Loader2, Compass, ShieldAlert, LogOut,
   HeartHandshake, Transgender, Users2, MessageCircle, Eye, Images, Drama, UsersRound, Star,
-  Image as ImageIcon, X
+  Image as ImageIcon, Camera, X
 } from 'lucide-react';
 
 const ICONS = {
@@ -56,27 +58,26 @@ export const GroupRooms = () => {
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [activeGroup, setActiveGroup] = useState(null);
   const [inputMessage, setInputMessage] = useState('');
-  const [pendingImage, setPendingImage] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [sending, setSending] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [joiningId, setJoiningId] = useState(null);
   const [joinError, setJoinError] = useState('');
   const imageInputRef = useRef(null);
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentUser) return;
-    setUploadingImage(true);
-    try {
-      const url = await uploadImage('media', currentUser.id, file);
-      setPendingImage(url);
-    } catch {
-      // upload failed silently; user can retry
-    } finally {
-      setUploadingImage(false);
-      e.target.value = '';
-    }
+  const { images, addFiles, removeImage, reset: resetImages, isUploading, readyUrls } = useMultiImageUpload(
+    'media',
+    currentUser?.id
+  );
+
+  const handleImageChange = (e) => {
+    addFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleCameraCapture = (files) => {
+    setCameraOpen(false);
+    addFiles(files);
   };
 
   const fetchGroups = useCallback(async () => {
@@ -224,36 +225,40 @@ export const GroupRooms = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if ((!inputMessage.trim() && !pendingImage) || !activeGroup || sending) return;
+    if ((!inputMessage.trim() && readyUrls.length === 0) || !activeGroup || sending || isUploading) return;
 
     setSending(true);
-    const { data, error } = await supabase
-      .from('group_room_messages')
-      .insert({
-        room_id: activeGroup.id,
-        sender_id: currentUser.id,
-        text: inputMessage || null,
-        media_url: pendingImage || null
-      })
-      .select()
-      .single();
+    // Several photos become several messages, same as direct chat.
+    const urls = readyUrls.length > 0 ? readyUrls : [null];
+    const roomId = activeGroup.id;
+    for (let i = 0; i < urls.length; i++) {
+      const { data, error } = await supabase
+        .from('group_room_messages')
+        .insert({
+          room_id: activeGroup.id,
+          sender_id: currentUser.id,
+          text: (i === 0 ? inputMessage : '') || null,
+          media_url: urls[i] || null
+        })
+        .select()
+        .single();
+      if (error) continue;
+
+      const newMsg = {
+        id: data.id,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        isCouple: currentUser.isCouple,
+        isPro: currentUser.isPro,
+        text: data.text,
+        mediaUrl: data.media_url,
+        timestamp: formatClockTime(data.created_at)
+      };
+      setGroups(prev => prev.map(g => g.id === roomId ? { ...g, messages: [...g.messages, newMsg] } : g));
+    }
     setSending(false);
-    if (error) return;
-
-    const newMsg = {
-      id: data.id,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      isCouple: currentUser.isCouple,
-      isPro: currentUser.isPro,
-      text: data.text,
-      mediaUrl: data.media_url,
-      timestamp: formatClockTime(data.created_at)
-    };
-
-    setGroups(prev => prev.map(g => g.id === activeGroup.id ? { ...g, messages: [...g.messages, newMsg] } : g));
     setInputMessage('');
-    setPendingImage('');
+    resetImages();
   };
 
   const myGroups = groups.filter(g => g.isMember);
@@ -317,7 +322,144 @@ export const GroupRooms = () => {
     );
   };
 
+  // Shared between the desktop inline pane and the mobile full-screen
+  // sheet below — same content either way, just a different container.
+  const groupChatContent = activeGroup && (
+    <>
+      {/* Header */}
+      <div className="p-4 bg-[var(--c-surface-2)] border-b border-[var(--c-border)] flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setActiveGroup(null)}
+            className="p-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] rounded-xl text-[var(--c-text-secondary)] transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h3 className="text-sm font-bold text-[var(--c-text)] flex items-center gap-2">
+              {activeGroup.name}
+              <span className="text-[9px] bg-amber-500/20 text-[var(--c-pro-text)] border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
+                GRUPO VIP ⭐
+              </span>
+            </h3>
+            <p className="text-[10px] text-[var(--c-accent)]">{activeGroup.memberCount} membros participando</p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => handleLeaveRoom(activeGroup)}
+          disabled={joiningId === activeGroup.id}
+          className="p-2 bg-[var(--c-overlay-5)] hover:bg-red-500/20 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl transition disabled:opacity-50 flex items-center gap-1.5 text-[11px] font-semibold px-3"
+          title="Sair da sala"
+        >
+          {joiningId === activeGroup.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">Sair da Sala</span>
+        </button>
+      </div>
+
+      {/* Messages Feed */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--c-bg)]">
+        {activeGroup.messages.length === 0 ? (
+          <div className="text-center py-12 space-y-2">
+            <Users className="w-8 h-8 text-[var(--c-text-faint)] mx-auto" />
+            <p className="text-xs text-[var(--c-text-muted)] font-semibold">Ninguém escreveu nesta sala ainda.</p>
+            <p className="text-[11px] text-[var(--c-accent)]">Seja a primeira pessoa a puxar assunto!</p>
+          </div>
+        ) : (
+          activeGroup.messages.map(msg => {
+            const isMe = msg.senderId === currentUser.id;
+            return (
+              <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                <span className="text-[10px] text-[var(--c-text-muted)] font-semibold mb-0.5 px-1 flex items-center gap-1">
+                  {msg.senderName} {msg.isCouple && <span className="text-rose-400">❤️ Casal</span>}
+                  {msg.isPro && <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" title="Membro VIP" />}
+                </span>
+                <div
+                  className={`max-w-[80%] p-3 rounded-2xl text-xs space-y-2 ${
+                    isMe
+                      ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-br-none shadow-md'
+                      : 'bg-[var(--c-surface)] text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-bl-none'
+                  }`}
+                >
+                  {msg.mediaUrl && (
+                    <img
+                      src={msg.mediaUrl}
+                      alt="Foto enviada"
+                      onClick={() => setLightboxSrc(msg.mediaUrl)}
+                      className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
+                    />
+                  )}
+                  {msg.text && <p className="leading-relaxed">{msg.text}</p>}
+                </div>
+                <span className="text-[9px] text-[var(--c-text-faint)] mt-1 px-1">{msg.timestamp}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Send Input */}
+      <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)] flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
+        {images.length > 0 && (
+          <div className="px-3 pt-3 flex gap-2 overflow-x-auto scrollbar-none">
+            {images.map((img) => (
+              <div key={img.id} className="relative flex-shrink-0">
+                <img src={img.previewUrl} alt="Pré-visualização" className="w-16 h-16 rounded-xl object-cover border border-[var(--c-border)]" />
+                {img.uploading && (
+                  <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeImage(img.id)}
+                  className="absolute -top-1.5 -right-1.5 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <form onSubmit={handleSendMessage} className="p-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0"
+            title="Enviar foto da galeria"
+          >
+            <ImageIcon className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCameraOpen(true)}
+            className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0"
+            title="Tirar foto"
+          >
+            <Camera className="w-4 h-4" />
+          </button>
+          <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+          <input
+            type="text"
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            placeholder="Escreva sua mensagem no grupo..."
+            className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 min-w-0"
+          />
+          <button
+            type="submit"
+            disabled={sending || isUploading}
+            className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
+          >
+            {sending || isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+        </form>
+      </div>
+    </>
+  );
+
   return (
+    <>
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
       {/* Header Banner — this gradient is always dark regardless of theme,
           so its text uses fixed light tones instead of the theme-swapping
@@ -339,123 +481,10 @@ export const GroupRooms = () => {
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
       ) : activeGroup ? (
-        /* Inside Active Group Chat Room */
-        <div className="bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl overflow-hidden shadow-2xl h-[calc(100vh-180px)] flex flex-col">
-          {/* Header */}
-          <div className="p-4 bg-[var(--c-surface-2)] border-b border-[var(--c-border)] flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setActiveGroup(null)}
-                className="p-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] rounded-xl text-[var(--c-text-secondary)] transition"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <h3 className="text-sm font-bold text-[var(--c-text)] flex items-center gap-2">
-                  {activeGroup.name}
-                  <span className="text-[9px] bg-amber-500/20 text-[var(--c-pro-text)] border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
-                    GRUPO VIP ⭐
-                  </span>
-                </h3>
-                <p className="text-[10px] text-[var(--c-accent)]">{activeGroup.memberCount} membros participando</p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleLeaveRoom(activeGroup)}
-              disabled={joiningId === activeGroup.id}
-              className="p-2 bg-[var(--c-overlay-5)] hover:bg-red-500/20 text-[var(--c-text-muted)] hover:text-red-400 rounded-xl transition disabled:opacity-50 flex items-center gap-1.5 text-[11px] font-semibold px-3"
-              title="Sair da sala"
-            >
-              {joiningId === activeGroup.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
-              <span className="hidden sm:inline">Sair da Sala</span>
-            </button>
-          </div>
-
-          {/* Messages Feed */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[var(--c-bg)]">
-            {activeGroup.messages.length === 0 ? (
-              <div className="text-center py-12 space-y-2">
-                <Users className="w-8 h-8 text-[var(--c-text-faint)] mx-auto" />
-                <p className="text-xs text-[var(--c-text-muted)] font-semibold">Ninguém escreveu nesta sala ainda.</p>
-                <p className="text-[11px] text-[var(--c-accent)]">Seja a primeira pessoa a puxar assunto!</p>
-              </div>
-            ) : (
-              activeGroup.messages.map(msg => {
-                const isMe = msg.senderId === currentUser.id;
-                return (
-                  <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                    <span className="text-[10px] text-[var(--c-text-muted)] font-semibold mb-0.5 px-1 flex items-center gap-1">
-                      {msg.senderName} {msg.isCouple && <span className="text-rose-400">❤️ Casal</span>}
-                      {msg.isPro && <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400" title="Membro VIP" />}
-                    </span>
-                    <div
-                      className={`max-w-[80%] p-3 rounded-2xl text-xs space-y-2 ${
-                        isMe
-                          ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-br-none shadow-md'
-                          : 'bg-[var(--c-surface)] text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-bl-none'
-                      }`}
-                    >
-                      {msg.mediaUrl && (
-                        <img
-                          src={msg.mediaUrl}
-                          alt="Foto enviada"
-                          onClick={() => setLightboxSrc(msg.mediaUrl)}
-                          className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
-                        />
-                      )}
-                      {msg.text && <p className="leading-relaxed">{msg.text}</p>}
-                    </div>
-                    <span className="text-[9px] text-[var(--c-text-faint)] mt-1 px-1">{msg.timestamp}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Send Input */}
-          <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)]">
-            {pendingImage && (
-              <div className="px-3 pt-3 flex items-center gap-2">
-                <div className="relative">
-                  <img src={pendingImage} alt="Pré-visualização" className="w-16 h-16 rounded-xl object-cover border border-[var(--c-border)]" />
-                  <button
-                    type="button"
-                    onClick={() => setPendingImage('')}
-                    className="absolute -top-1.5 -right-1.5 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            )}
-            <form onSubmit={handleSendMessage} className="p-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                disabled={uploadingImage}
-                className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
-                title="Enviar foto"
-              >
-                {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-              </button>
-              <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Escreva sua mensagem no grupo..."
-                className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 min-w-0"
-              />
-              <button
-                type="submit"
-                disabled={sending}
-                className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
-              >
-                {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </button>
-            </form>
-          </div>
+        // Desktop only — mobile renders this same content portaled to
+        // <body> as a full-screen sheet (see below), same as direct chat.
+        <div className="hidden md:flex bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl overflow-hidden shadow-2xl h-[calc(100vh-180px)] flex-col">
+          {groupChatContent}
         </div>
       ) : (
         <div className="space-y-8">
@@ -500,6 +529,19 @@ export const GroupRooms = () => {
       )}
 
       <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      {cameraOpen && (
+        <CameraCapture onCapture={handleCameraCapture} onClose={() => setCameraOpen(false)} />
+      )}
     </div>
+
+    {/* Mobile: the open room opens as its own full-screen sheet, portaled
+        straight to <body> — same fix as direct chat and notifications. */}
+    {activeGroup && createPortal(
+      <div className="md:hidden fixed inset-0 z-[100] flex flex-col bg-[var(--c-surface)]" style={{ height: '100dvh' }}>
+        {groupChatContent}
+      </div>,
+      document.body
+    )}
+    </>
   );
 };

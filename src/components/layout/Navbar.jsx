@@ -30,7 +30,7 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
   }, [menuOpen]);
 
   return (
-    <header className="sticky top-0 z-40 bg-[var(--c-surface-2)]/90 backdrop-blur-xl border-b border-rose-500/20 px-3 lg:px-8 py-2.5">
+    <header className="sticky top-0 z-50 bg-[var(--c-surface-2)]/90 backdrop-blur-xl border-b border-rose-500/20 px-3 lg:px-8 py-2.5">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Brand Logo */}
         <div className="flex items-center gap-2.5">

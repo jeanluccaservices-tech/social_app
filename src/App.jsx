@@ -33,6 +33,16 @@ const MainContent = () => {
     setActiveTab('profile');
   };
 
+  // Distinct from just setActiveTab('profile') — that alone would leave a
+  // previously-selected other person's profile in place (e.g. after
+  // viewing someone from the feed, then coming back to "Meu Perfil").
+  const handleOpenOwnProfile = () => {
+    setSelectedUserForProfile(null);
+    setActiveTab('profile');
+  };
+
+  const isOwnProfileActive = activeTab === 'profile' && !selectedUserForProfile;
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-transparent flex flex-col items-center justify-center gap-3">
@@ -57,13 +67,18 @@ const MainContent = () => {
   return (
     <div className="min-h-screen bg-transparent text-[var(--c-text)] flex flex-col font-sans selection:bg-rose-500 selection:text-[var(--c-text)]">
       <Navbar
-        onOpenProfile={() => { setSelectedUserForProfile(null); setActiveTab('profile'); }}
+        onOpenProfile={handleOpenOwnProfile}
         onOpenFriends={() => setActiveTab('friends')}
       />
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         {/* Desktop Sidebar */}
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          isOwnProfileActive={isOwnProfileActive}
+          onOpenOwnProfile={handleOpenOwnProfile}
+        />
 
         {/* Main Content Area */}
         <main className="flex-1 p-3 sm:p-4 md:p-6 pb-24 md:pb-8 overflow-y-auto">
@@ -111,12 +126,12 @@ const MainContent = () => {
           { id: 'friends', label: 'Amigos', icon: Users },
           { id: 'profile', label: 'Perfil', icon: User }
         ].map(item => {
-          const isActive = activeTab === item.id;
+          const isActive = item.id === 'profile' ? isOwnProfileActive : activeTab === item.id;
           const Icon = item.icon;
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => item.id === 'profile' ? handleOpenOwnProfile() : setActiveTab(item.id)}
               className={`flex flex-col items-center justify-center gap-0.5 relative py-1 px-2.5 min-w-[50px] min-h-[44px] rounded-2xl transition active:scale-95 ${
                 isActive ? 'text-rose-500 font-bold bg-rose-500/10' : 'text-[var(--c-text-muted)] hover:text-[var(--c-text)]'
               }`}

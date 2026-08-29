@@ -7,7 +7,7 @@ export const MediaLightbox = ({ src, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
       onClick={onClose}
     >
       <button

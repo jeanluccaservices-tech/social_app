@@ -41,6 +41,10 @@ export const SocialProvider = ({ children }) => {
   const [notificationsLoading, setNotificationsLoading] = useState(true);
 
   // --- FETCHING ---
+  // Depends on currentUser so it re-runs when login finishes — posts RLS
+  // requires auth.uid(), and SocialProvider mounts (and fires this once)
+  // before that first login completes, so without this dependency the
+  // very first fetch happens while still logged out and never retries.
   const fetchPosts = useCallback(async () => {
     setPostsLoading(true);
     const { data } = await supabase
@@ -53,7 +57,7 @@ export const SocialProvider = ({ children }) => {
       .order('created_at', { ascending: false });
     setRawPosts((data || []).map(mapPost));
     setPostsLoading(false);
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
@@ -142,10 +146,12 @@ export const SocialProvider = ({ children }) => {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   // Light polling instead of a full realtime subscription — good enough to
-  // surface new notifications without websocket infrastructure.
+  // surface new notifications without websocket infrastructure. Matches
+  // the message poll interval so a like/comment/friend request shows up
+  // about as fast as a new message does.
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, 10000);
     return () => clearInterval(interval);
   }, [currentUser, fetchNotifications]);
 
