@@ -152,7 +152,7 @@ export const CreatePost = () => {
 
       <p className="flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--c-text-faint)]">
         <ShieldAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
-        Não são permitidos conteúdos com menores de idade, crimes sexuais, drogas ou outras ilegalidades. Ao publicar, você é o único responsável pelo conteúdo.
+        Não são permitidos conteúdos com menores de idade, crimes sexuais, drogas, venda de conteúdos ou outras ilegalidades. Ao publicar, você é o único responsável pelo conteúdo.
       </p>
 
       {/* Action Footer */}

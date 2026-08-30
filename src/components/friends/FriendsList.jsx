@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { useToast } from '../../context/ToastContext';
 import { MatchTab } from './MatchTab';
+import { ProfileSuggestions } from '../feed/ProfileSuggestions';
 import { Avatar } from '../common/Avatar';
 import { isWithinRadius } from '../../lib/geo';
 import { GENDERS, MIN_RADIUS_KM, MAX_RADIUS_KM, sanitizeRadiusInput, clampRadius } from '../../lib/constants';
@@ -299,7 +300,10 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
 
       {/* Tab 1: Friends List */}
       {!contactsLoading && tab === 'friends' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <ProfileSuggestions onSelectUser={onSelectUser} onOpenChatWithUser={onOpenChatWithUser} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {filteredList(myFriends).length === 0 ? (
             <div className="col-span-2 text-center py-12 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl space-y-2">
               <Users className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
@@ -342,12 +346,16 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
               </div>
             ))
           )}
+          </div>
         </div>
       )}
 
       {/* Tab 2: Pending Requests */}
       {!contactsLoading && tab === 'requests' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <ProfileSuggestions onSelectUser={onSelectUser} onOpenChatWithUser={onOpenChatWithUser} />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {filteredList(pendingRequests).length === 0 ? (
             <div className="col-span-2 text-center py-12 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl space-y-2">
               <UserCheck className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
@@ -387,6 +395,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
               </div>
             ))
           )}
+          </div>
         </div>
       )}
 

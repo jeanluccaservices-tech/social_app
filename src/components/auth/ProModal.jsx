@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import {
   X, CheckCircle, MessageSquare, Users, Target, Crown, ShieldCheck, CreditCard,
-  Image as ImageIcon, Loader2, CalendarClock, QrCode, Copy, Check, ArrowLeft
+  Image as ImageIcon, Loader2, CalendarClock, QrCode, Copy, Check, ArrowLeft, TrendingUp
 } from 'lucide-react';
 import { formatFullDateTime } from '../../utils/time';
 
@@ -281,6 +281,11 @@ export const ProModal = () => {
                   title: 'Salas de Grupos Exclusivas para Membros VIP',
                   desc: 'Visualize e participe de bate-papos coletivos para casais, enofilia, viagens e festas.',
                   icon: Users
+                },
+                {
+                  title: 'Aba "Em Alta" Exclusiva',
+                  desc: 'Veja as publicações com mais curtidas e comentários de toda a rede, só para membros VIP.',
+                  icon: TrendingUp
                 },
                 {
                   title: 'Recomendações de Perfis Personalizadas',

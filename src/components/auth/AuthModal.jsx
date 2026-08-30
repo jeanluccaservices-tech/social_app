@@ -5,6 +5,7 @@ import { Heart, Users, X, Lock, Mail, User, Target, MapPin, Loader2, MailCheck, 
 import { GENDERS, MIN_AGE, MAX_AGE, sanitizeAgeInput, clampAge, MIN_BIRTH_DATE, MAX_BIRTH_DATE, calculateAge } from '../../lib/constants';
 import { CitySelect } from '../common/CitySelect';
 import { SupportButton } from '../common/SupportButton';
+import { TermsModal } from '../common/TermsModal';
 
 // A resend costs Resend/GoTrue quota and can be used to spam an inbox, so
 // it's throttled: a 3-minute wait between sends, and at most 3 codes total
@@ -25,6 +26,7 @@ export const AuthModal = () => {
   const [verifyCode, setVerifyCode] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendCount, setResendCount] = useState(0);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -60,8 +62,8 @@ export const AuthModal = () => {
   const [regLocation, setRegLocation] = useState('');
 
   // Matching preferences: who this profile wants to see/be shown to
-  const [prefAgeMin, setPrefAgeMin] = useState('21');
-  const [prefAgeMax, setPrefAgeMax] = useState('40');
+  const [prefAgeMin, setPrefAgeMin] = useState('18');
+  const [prefAgeMax, setPrefAgeMax] = useState('80');
   const [prefGenders, setPrefGenders] = useState(['Feminino']);
   const [prefRadiusKm, setPrefRadiusKm] = useState('50');
 
@@ -701,8 +703,14 @@ export const AuthModal = () => {
                   <span>
                     Declaro que tenho <strong className="text-[var(--c-text)]">18 anos ou mais</strong> e
                     que todas as informações fornecidas neste cadastro são verdadeiras. Sou o único
-                    responsável pela veracidade dos meus dados e pelo uso da minha conta, conforme os
-                    Termos de Uso.
+                    responsável pela veracidade dos meus dados e pelo uso da minha conta, conforme os{' '}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsTermsModalOpen(true); }}
+                      className="underline font-semibold text-[var(--c-text)] hover:text-rose-400"
+                    >
+                      Termos de Uso
+                    </button>.
                   </span>
                 </span>
               </label>
@@ -719,6 +727,8 @@ export const AuthModal = () => {
           )}
         </div>
       </div>
+
+      <TermsModal isOpen={isTermsModalOpen} onClose={() => setIsTermsModalOpen(false)} />
     </div>
   );
 };

@@ -1,11 +1,12 @@
 import React from 'react';
 import { User, Users } from 'lucide-react';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 
 // Renders the user's own photo when they have one, or a neutral silhouette
 // placeholder — never a stock stand-in photo — until they upload one.
 export const Avatar = ({ src, alt, isCouple = false, className = '', ...rest }) => {
   if (src) {
-    return <img src={src} alt={alt} className={className} {...rest} />;
+    return <img src={src} alt={alt} className={className} {...noDownloadImageProps} {...rest} />;
   }
   const Icon = isCouple ? Users : User;
   return (

@@ -7,6 +7,7 @@ import { ChatLockBanner } from './ChatLockBanner';
 import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
 import { CameraCapture } from '../common/CameraCapture';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, Camera, X, Loader2 } from 'lucide-react';
 
 export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
@@ -186,6 +187,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                       alt="Foto enviada"
                       onClick={() => setLightboxSrc(msg.mediaUrl)}
                       className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
+                      {...noDownloadImageProps}
                     />
                   )}
                   {msg.text && <p className="leading-relaxed">{msg.text}</p>}

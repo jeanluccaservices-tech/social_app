@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useMultiImageUpload } from '../../lib/useMultiImageUpload';
 import { MediaLightbox } from '../common/MediaLightbox';
 import { CameraCapture } from '../common/CameraCapture';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { formatClockTime } from '../../utils/time';
 import {
   Sparkles, Lock, Send, Users, Flame, ArrowLeft, Loader2, Compass, ShieldAlert, LogOut,
@@ -387,6 +388,7 @@ export const GroupRooms = () => {
                       alt="Foto enviada"
                       onClick={() => setLightboxSrc(msg.mediaUrl)}
                       className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
+                      {...noDownloadImageProps}
                     />
                   )}
                   {msg.text && <p className="leading-relaxed">{msg.text}</p>}

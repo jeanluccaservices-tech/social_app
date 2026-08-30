@@ -3,7 +3,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { CreatePost } from './CreatePost';
 import { PostCard } from './PostCard';
-import { ProfileSuggestions } from './ProfileSuggestions';
 import { isWithinRadius } from '../../lib/geo';
 import { Users, Sparkles, Rss, Heart, Loader2 } from 'lucide-react';
 
@@ -70,12 +69,6 @@ export const Feed = ({ onOpenChatWithUser, onSelectUser }) => {
     <div className="space-y-6 max-w-2xl mx-auto pb-12">
       {/* Post Creator Box */}
       <CreatePost />
-
-      {/* Profile Suggestions Widget */}
-      <ProfileSuggestions
-        onSelectUser={onSelectUser}
-        onOpenChatWithUser={onOpenChatWithUser}
-      />
 
       {/* Source Tabs */}
       <div className="flex items-center justify-between bg-[var(--c-surface-2)]/70 p-1.5 rounded-2xl border border-[var(--c-border)]">

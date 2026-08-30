@@ -4,8 +4,9 @@ import { useSocial } from '../../context/SocialContext';
 import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
 import { REPORT_REASONS } from '../../lib/constants';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { useToast } from '../../context/ToastContext';
-import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag } from 'lucide-react';
+import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag, X, Users } from 'lucide-react';
 
 export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
@@ -15,10 +16,14 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [commentInput, setCommentInput] = useState('');
   const [confirmDeleteCommentId, setConfirmDeleteCommentId] = useState(null);
+  const [showLikers, setShowLikers] = useState(false);
 
   // Post options menu (⋮): delete (own posts) or report (others' posts)
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const [optionsView, setOptionsView] = useState('menu'); // 'menu' | 'confirm-delete' | 'report' | 'reported'
+  const [optionsView, setOptionsView] = useState('menu'); // 'menu' | 'confirm-delete' | 'report' | 'report-details' | 'reported'
+  const [reportReason, setReportReason] = useState(null);
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const optionsRef = useRef(null);
 
   useEffect(() => {
@@ -33,10 +38,26 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [optionsOpen]);
 
-  const handleReport = async (reason) => {
-    const res = await reportPost(post.id, reason);
-    setOptionsView(res.success ? 'reported' : 'menu');
+  const handleSelectReportReason = (reason) => {
+    setReportReason(reason);
+    setReportDetails('');
+    setOptionsView('report-details');
   };
+
+  const handleSubmitReport = async () => {
+    if (!reportReason) return;
+    setReportSubmitting(true);
+    const res = await reportPost(post.id, reportReason, reportDetails.trim());
+    setReportSubmitting(false);
+    if (res.success) {
+      setOptionsView('reported');
+    } else {
+      showToast(res.message || 'Não foi possível enviar a denúncia.', 'error');
+      setOptionsView('menu');
+    }
+  };
+
+  const likers = (post.likes || []).map(id => users.find(u => u.id === id)).filter(Boolean);
 
   // Find author
   const author = users.find(u => u.id === post.userId) || {
@@ -183,17 +204,48 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
                   )}
 
                   {optionsView === 'report' && (
-                    <div className="p-2">
+                    <div className="p-2 max-h-72 overflow-y-auto">
                       <p className="text-[10px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider px-2 py-1.5">Motivo da denúncia</p>
                       {REPORT_REASONS.map(reason => (
                         <button
                           key={reason}
-                          onClick={() => handleReport(reason)}
+                          onClick={() => handleSelectReportReason(reason)}
                           className="w-full text-left px-3 py-2 text-xs text-[var(--c-text-secondary)] hover:bg-[var(--c-overlay-5)] rounded-lg transition"
                         >
                           {reason}
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {optionsView === 'report-details' && (
+                    <div className="p-3 space-y-2">
+                      <p className="text-[11px] text-[var(--c-text-secondary)] px-1">
+                        Motivo: <span className="font-bold text-[var(--c-text)]">{reportReason}</span>
+                      </p>
+                      <textarea
+                        value={reportDetails}
+                        onChange={(e) => setReportDetails(e.target.value)}
+                        placeholder="Detalhes adicionais (opcional)..."
+                        rows={3}
+                        className="w-full bg-[var(--c-bg)] border border-[var(--c-border)] rounded-lg p-2 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500/50 resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSubmitReport}
+                          disabled={reportSubmitting}
+                          className="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[11px] font-bold transition disabled:opacity-60"
+                        >
+                          {reportSubmitting ? 'Enviando...' : 'Enviar denúncia'}
+                        </button>
+                        <button
+                          onClick={() => setOptionsView('report')}
+                          disabled={reportSubmitting}
+                          className="flex-1 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-[var(--c-text-muted)] rounded-lg text-[11px] font-bold transition"
+                        >
+                          Voltar
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -226,6 +278,7 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
             alt="Mídia da postagem"
             onClick={() => setLightboxSrc(post.mediaUrl)}
             className="w-full max-h-[450px] object-cover hover:scale-102 transition duration-300 cursor-zoom-in"
+            {...noDownloadImageProps}
           />
         </div>
       )}
@@ -234,18 +287,27 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
       <div className="p-4 flex items-center justify-between border-t border-[var(--c-border-soft)] bg-[var(--c-surface-2)]/40">
         <div className="flex items-center gap-4">
           {/* Like Button */}
-          <button
-            onClick={() => {
-              if (!currentUser) setIsAuthModalOpen(true);
-              else toggleLikePost(post.id);
-            }}
-            className={`flex items-center gap-1.5 text-xs font-bold transition transform active:scale-125 ${
-              post.likedByMe ? 'text-rose-500' : 'text-[var(--c-text-muted)] hover:text-rose-400'
-            }`}
-          >
-            <Heart className={`w-5 h-5 ${post.likedByMe ? 'fill-current text-rose-500' : ''}`} />
-            <span>{post.likesCount}</span>
-          </button>
+          <div className={`flex items-center gap-1.5 text-xs font-bold ${
+            post.likedByMe ? 'text-rose-500' : 'text-[var(--c-text-muted)]'
+          }`}>
+            <button
+              onClick={() => {
+                if (!currentUser) setIsAuthModalOpen(true);
+                else toggleLikePost(post.id);
+              }}
+              className="flex items-center transition transform active:scale-125 hover:text-rose-400"
+            >
+              <Heart className={`w-5 h-5 ${post.likedByMe ? 'fill-current text-rose-500' : ''}`} />
+            </button>
+            <button
+              onClick={() => post.likesCount > 0 && setShowLikers(true)}
+              disabled={post.likesCount === 0}
+              className="hover:underline disabled:no-underline"
+              title={post.likesCount > 0 ? 'Ver quem curtiu' : undefined}
+            >
+              {post.likesCount}
+            </button>
+          </div>
 
           {/* Comment Toggle Button */}
           <button
@@ -257,6 +319,17 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
           </button>
         </div>
 
+        {/* See Likers Button — pinned to the corner since burying it in the
+            like counter above made it too easy to miss. */}
+        {post.likesCount > 0 && (
+          <button
+            onClick={() => setShowLikers(true)}
+            className="flex items-center gap-1.5 text-[11px] font-bold text-[var(--c-text-muted)] hover:text-rose-400 transition px-2.5 py-1 rounded-full border border-[var(--c-border)] hover:border-rose-500/40"
+            title="Ver quem curtiu"
+          >
+            <Users className="w-3.5 h-3.5" /> Ver curtidas
+          </button>
+        )}
       </div>
 
       {/* Comments Drawer */}
@@ -331,6 +404,50 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
       )}
 
       <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+
+      {/* Curtidas Modal — who liked this post */}
+      {showLikers && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setShowLikers(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm max-h-[70vh] bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+          >
+            <div className="flex items-center justify-between p-4 border-b border-[var(--c-border-soft)]">
+              <h3 className="text-sm font-bold text-[var(--c-text)] flex items-center gap-1.5">
+                <Heart className="w-4 h-4 text-rose-500 fill-current" /> Curtidas ({likers.length})
+              </h3>
+              <button
+                onClick={() => setShowLikers(false)}
+                className="p-1.5 text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-10)] rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-2">
+              {likers.length === 0 ? (
+                <p className="text-xs text-[var(--c-text-faint)] text-center py-6">Ninguém curtiu ainda.</p>
+              ) : (
+                likers.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setShowLikers(false); onSelectUser(u); }}
+                    className="w-full flex items-center gap-3 p-2.5 hover:bg-[var(--c-overlay-5)] rounded-2xl transition text-left"
+                  >
+                    <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500/30" />
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-bold text-[var(--c-text)] truncate">{u.name}</p>
+                      <p className="text-[10px] text-[var(--c-accent)] truncate">@{u.username}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

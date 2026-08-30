@@ -62,7 +62,17 @@ export const calculateAge = (birthDateStr) => {
   return age;
 };
 
-export const REPORT_REASONS = ['Spam', 'Conteúdo impróprio', 'Assédio ou bullying', 'Informação falsa', 'Outro'];
+export const REPORT_REASONS = [
+  'Conteúdo inapropriado',
+  'Spam',
+  'Crime sexual',
+  'Venda de conteúdo ou produtos',
+  'Assédio ou bullying',
+  'Violência ou conteúdo perigoso',
+  'Perfil falso ou golpe',
+  'Informação falsa',
+  'Outro'
+];
 
 // Optional "About" info, fillable any time after the profile is created.
 export const SEXUAL_ORIENTATIONS = ['Heterossexual', 'Homossexual', 'Bissexual', 'Pansexual', 'Assexual', 'Outro'];

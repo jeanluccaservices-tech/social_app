@@ -7,6 +7,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginGate } from './components/layout/LoginGate';
 import { Feed } from './components/feed/Feed';
+import { TrendingFeed } from './components/feed/TrendingFeed';
 import { GroupRooms } from './components/groups/GroupRooms';
 import { ChatView } from './components/chat/ChatView';
 import { FriendsList } from './components/friends/FriendsList';
@@ -14,7 +15,8 @@ import { ProfileView } from './components/profile/ProfileView';
 import { AuthModal } from './components/auth/AuthModal';
 import { ProModal } from './components/auth/ProModal';
 import { AgeGate, isAgeVerified } from './components/auth/AgeGate';
-import { Rss, MessageCircle, Users, User, Flame, Heart } from 'lucide-react';
+import { ScreenshotGuard } from './components/common/ScreenshotGuard';
+import { Rss, MessageCircle, Users, User, Flame, Heart, TrendingUp } from 'lucide-react';
 
 const MainContent = () => {
   const { currentUser, authLoading } = useAuth();
@@ -89,6 +91,13 @@ const MainContent = () => {
             />
           )}
 
+          {activeTab === 'trending' && (
+            <TrendingFeed
+              onOpenChatWithUser={handleOpenChatWithUser}
+              onSelectUser={handleSelectUser}
+            />
+          )}
+
           {activeTab === 'groups' && (
             <GroupRooms />
           )}
@@ -121,6 +130,7 @@ const MainContent = () => {
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--c-surface-2)]/95 backdrop-blur-2xl border-t border-rose-500/20 px-2 py-1.5 flex items-center justify-around z-40 shadow-2xl">
         {[
           { id: 'feed', label: 'Feed', icon: Rss },
+          { id: 'trending', label: 'Em Alta', icon: TrendingUp, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
           { id: 'groups', label: 'Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
           { id: 'chat', label: 'Chat', icon: MessageCircle, badge: unreadMessageCount > 0 ? (unreadMessageCount > 9 ? '9+' : unreadMessageCount) : null, badgeColor: 'bg-rose-600 text-white' },
           { id: 'friends', label: 'Amigos', icon: Users },
@@ -151,6 +161,7 @@ const MainContent = () => {
       {/* Modals */}
       <AuthModal />
       <ProModal />
+      <ScreenshotGuard />
     </div>
   );
 };

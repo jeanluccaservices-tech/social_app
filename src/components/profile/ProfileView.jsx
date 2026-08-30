@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { PostCard } from '../feed/PostCard';
-import { ProfileSuggestions } from '../feed/ProfileSuggestions';
 import { EditProfileModal } from './EditProfileModal';
 import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { useToast } from '../../context/ToastContext';
 import { Users, MapPin, Calendar, Sparkles, MessageSquare, UserPlus, UserX, Check, Pencil, Target, Navigation, Info, Rss, Image as ImageIcon, Ban, ShieldCheck } from 'lucide-react';
 
@@ -86,6 +86,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
               src={profileUser.cover}
               alt="Capa do Perfil"
               className="w-full h-full object-cover"
+              {...noDownloadImageProps}
             />
           )}
         </div>
@@ -206,7 +207,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
             <div className="p-4 bg-[var(--c-surface-2)] border border-rose-500/30 rounded-2xl space-y-3 mt-4">
               <div className="flex items-center justify-between">
                 <span className="text-rose-400 text-xs font-bold flex items-center gap-1.5">
-                  <Users className="w-4 h-4" /> Integrantes e Sexo do Casal:
+                  <Users className="w-4 h-4" /> Integrantes do Casal:
                 </span>
                 <span className="text-[10px] text-[var(--c-accent)] font-semibold bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
                   {profileUser.partner1?.gender || 'Masculino'} & {profileUser.partner2?.gender || 'Feminino'}
@@ -271,12 +272,6 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
           )}
         </div>
       </div>
-
-      {/* Recommended Profiles Widget */}
-      <ProfileSuggestions
-        onSelectUser={onSelectUser}
-        onOpenChatWithUser={onOpenChatWithUser}
-      />
 
       {/* Section Tabs: About / Posts / Media */}
       <div className="flex bg-[var(--c-surface-2)] p-1 rounded-2xl border border-[var(--c-border)]">
@@ -390,6 +385,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
                   src={post.mediaUrl}
                   alt="Mídia publicada"
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                  {...noDownloadImageProps}
                 />
               </button>
             ))}
