@@ -35,12 +35,17 @@ export const SocialProvider = ({ children }) => {
   const [friendships, setFriendships] = useState([]);
   const [messages, setMessages] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
+  const [blockedProfiles, setBlockedProfiles] = useState([]);
   const [contactsLoading, setContactsLoading] = useState(true);
 
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
 
   // --- FETCHING ---
+  // Depends on currentUser so it re-runs when login finishes — posts RLS
+  // requires auth.uid(), and SocialProvider mounts (and fires this once)
+  // before that first login completes, so without this dependency the
+  // very first fetch happens while still logged out and never retries.
   const fetchPosts = useCallback(async () => {
     setPostsLoading(true);
     const { data } = await supabase
@@ -53,7 +58,7 @@ export const SocialProvider = ({ children }) => {
       .order('created_at', { ascending: false });
     setRawPosts((data || []).map(mapPost));
     setPostsLoading(false);
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
@@ -142,10 +147,12 @@ export const SocialProvider = ({ children }) => {
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
   // Light polling instead of a full realtime subscription — good enough to
-  // surface new notifications without websocket infrastructure.
+  // surface new notifications without websocket infrastructure. Matches
+  // the message poll interval so a like/comment/friend request shows up
+  // about as fast as a new message does.
   useEffect(() => {
     if (!currentUser) return;
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, 10000);
     return () => clearInterval(interval);
   }, [currentUser, fetchNotifications]);
 
@@ -268,9 +275,29 @@ export const SocialProvider = ({ children }) => {
     const { error } = await supabase.rpc('unblock_user', { target_user_id: targetUserId });
     if (error) return false;
     setBlockedUsers(prev => prev.filter(id => id !== targetUserId));
+    setBlockedProfiles(prev => prev.filter(p => p.id !== targetUserId));
     refetchUsers(); // the unblocked profile becomes visible again via RLS
     return true;
   };
+
+  // Blocked profiles are hidden from the regular `users` list by RLS (0023),
+  // so a "who have I blocked" screen needs its own read that bypasses that
+  // — get_blocked_profiles() only ever returns the caller's own block list.
+  const fetchBlockedProfiles = useCallback(async () => {
+    if (!currentUser) {
+      setBlockedProfiles([]);
+      return;
+    }
+    const { data, error } = await supabase.rpc('get_blocked_profiles');
+    if (error) return;
+    setBlockedProfiles((data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      username: p.username,
+      avatar: p.avatar_url || '',
+      isCouple: p.is_couple
+    })));
+  }, [currentUser]);
 
   // --- CHAT PERMISSION LOGIC ---
   // Only PRO members can start a new DM thread. A non-PRO member can still
@@ -417,13 +444,18 @@ export const SocialProvider = ({ children }) => {
     }
   };
 
+  // Goes through the report-post Edge Function (rather than a plain table
+  // insert) so a moderation notification e-mail — reason, reporter,
+  // reported post's content/link — always goes out alongside the report,
+  // even though the row it writes is the same post_reports row either way.
   const reportPost = async (postId, reason, details) => {
     if (!currentUser) return { success: false, message: 'Faça login para denunciar.' };
-    const { error } = await supabase
-      .from('post_reports')
-      .insert({ post_id: postId, reporter_id: currentUser.id, reason, details: details || null });
+    const { error } = await supabase.functions.invoke('report-post', {
+      body: { post_id: postId, reason, details: details || null }
+    });
     if (error) {
-      if (error.code === '23505') return { success: false, message: 'Você já denunciou esta publicação.' };
+      const status = error?.context?.status;
+      if (status === 409) return { success: false, message: 'Você já denunciou esta publicação.' };
       return { success: false, message: 'Não foi possível enviar a denúncia. Tente novamente.' };
     }
     return { success: true };
@@ -450,6 +482,8 @@ export const SocialProvider = ({ children }) => {
       rejectFriendRequest,
       removeFriend,
       blockedUsers,
+      blockedProfiles,
+      fetchBlockedProfiles,
       isBlocked,
       blockUser,
       unblockUser,

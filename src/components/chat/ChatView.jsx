@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
-import { uploadImage } from '../../lib/storage';
+import { useMultiImageUpload } from '../../lib/useMultiImageUpload';
 import { ChatLockBanner } from './ChatLockBanner';
 import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
-import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, X, Loader2 } from 'lucide-react';
+import { CameraCapture } from '../common/CameraCapture';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
+import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, Camera, X, Loader2 } from 'lucide-react';
 
 export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
@@ -17,11 +20,15 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const [mobileView, setMobileView] = useState(selectedTargetUser ? 'conversation' : 'list');
 
   const [inputMessage, setInputMessage] = useState('');
-  const [pendingImage, setPendingImage] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
   const [sending, setSending] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const imageInputRef = useRef(null);
+
+  const { images, addFiles, removeImage, reset: resetImages, isUploading, readyUrls } = useMultiImageUpload(
+    'media',
+    currentUser?.id
+  );
 
   // Opening a conversation (including the one passed in via
   // selectedTargetUser on mount) clears its unread badge.
@@ -80,29 +87,32 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if ((!inputMessage.trim() && !pendingImage) || !activeUser || sending) return;
+    if ((!inputMessage.trim() && readyUrls.length === 0) || !activeUser || sending || isUploading) return;
     setSending(true);
-    const ok = await sendMessage(activeUser.id, inputMessage, pendingImage);
+    // Several photos become several messages — one bubble per photo, same
+    // as most chat apps do when you pick more than one at once. The typed
+    // text rides along with the first message only.
+    const urls = readyUrls.length > 0 ? readyUrls : [null];
+    let anySent = false;
+    for (let i = 0; i < urls.length; i++) {
+      const ok = await sendMessage(activeUser.id, i === 0 ? inputMessage : '', urls[i] || '');
+      if (ok) anySent = true;
+    }
     setSending(false);
-    if (ok) {
+    if (anySent) {
       setInputMessage('');
-      setPendingImage('');
+      resetImages();
     }
   };
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !currentUser) return;
-    setUploadingImage(true);
-    try {
-      const url = await uploadImage('media', currentUser.id, file);
-      setPendingImage(url);
-    } catch {
-      // upload failed silently; user can retry
-    } finally {
-      setUploadingImage(false);
-      e.target.value = '';
-    }
+  const handleImageChange = (e) => {
+    addFiles(e.target.files);
+    e.target.value = '';
+  };
+
+  const handleCameraCapture = (files) => {
+    setCameraOpen(false);
+    addFiles(files);
   };
 
   const getLastMessage = (u) => {
@@ -113,8 +123,159 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
     return convo.length > 0 ? convo[convo.length - 1] : null;
   };
 
+  // Shared between the desktop inline pane and the mobile full-screen
+  // sheet below — same content either way, just a different container.
+  const conversationContent = activeUser ? (
+    <>
+      {/* Header */}
+      <div className="p-3 sm:p-4 bg-[var(--c-surface-2)] border-b border-[var(--c-border)] flex items-center justify-between gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Back button — only relevant on mobile conversation view */}
+          <button
+            onClick={handleBackToList}
+            className="md:hidden p-2 -ml-1 text-[var(--c-text-secondary)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] rounded-xl transition flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          <div
+            onClick={() => onSelectUser(activeUser)}
+            className="flex items-center gap-3 cursor-pointer group min-w-0"
+          >
+            <Avatar src={activeUser.avatar} alt={activeUser.name} isCouple={activeUser.isCouple} className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500 flex-shrink-0" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-[var(--c-text)] group-hover:text-rose-400 transition flex items-center gap-1.5 truncate">
+                {activeUser.name}
+                {activeUser.isCouple && <span className="text-xs text-rose-400">❤️</span>}
+              </h3>
+              <p className="text-[10px] text-[var(--c-accent)] truncate">
+                @{activeUser.username} • {activeUser.isCouple ? `Casal (${activeUser.age} anos)` : `${activeUser.gender}, ${activeUser.age} anos`}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chat Body (Messages) */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {conversationMessages.length === 0 ? (
+          <div className="text-center py-16 space-y-2">
+            <MessageSquare className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
+            <p className="text-xs text-[var(--c-text-muted)] font-semibold">Nenhuma mensagem trocada ainda.</p>
+            {chatPermission.allowed && (
+              <p className="text-[11px] text-[var(--c-accent)]">Envie um oi para começar a conversa!</p>
+            )}
+          </div>
+        ) : (
+          conversationMessages.map(msg => {
+            const isMe = msg.senderId === currentUser.id;
+            return (
+              <div
+                key={msg.id}
+                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+              >
+                <div
+                  className={`max-w-[75%] p-3 rounded-2xl text-xs space-y-2 ${
+                    isMe
+                      ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-br-none shadow-md shadow-rose-600/20'
+                      : 'bg-[var(--c-surface)] text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-bl-none'
+                  }`}
+                >
+                  {msg.mediaUrl && (
+                    <img
+                      src={msg.mediaUrl}
+                      alt="Foto enviada"
+                      onClick={() => setLightboxSrc(msg.mediaUrl)}
+                      className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
+                      {...noDownloadImageProps}
+                    />
+                  )}
+                  {msg.text && <p className="leading-relaxed">{msg.text}</p>}
+                </div>
+                <span className="text-[9px] text-[var(--c-text-faint)] mt-1 px-1">{msg.timestamp}</span>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Chat Input Field — visible to everyone, but sending requires PRO */}
+      {chatPermission.allowed ? (
+        <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)] flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
+          {images.length > 0 && (
+            <div className="px-3 pt-3 flex gap-2 overflow-x-auto scrollbar-none">
+              {images.map((img) => (
+                <div key={img.id} className="relative flex-shrink-0">
+                  <img src={img.previewUrl} alt="Pré-visualização" className="w-16 h-16 rounded-xl object-cover border border-[var(--c-border)]" />
+                  {img.uploading && (
+                    <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeImage(img.id)}
+                    className="absolute -top-1.5 -right-1.5 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleSend} className="p-3 flex gap-2">
+            {/* Sending photos is a PRO-only perk, even for non-PRO
+                members who are allowed to reply to a PRO sender. */}
+            {currentUser.isPro && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0"
+                  title="Enviar foto da galeria"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraOpen(true)}
+                  className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0"
+                  title="Tirar foto"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+              </>
+            )}
+            <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Escreva sua mensagem..."
+              className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 min-w-0"
+            />
+            <button
+              type="submit"
+              disabled={sending || isUploading}
+              className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
+            >
+              {sending || isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </button>
+          </form>
+        </div>
+      ) : (
+        <ChatLockBanner />
+      )}
+    </>
+  ) : (
+    <div className="flex-1 flex items-center justify-center text-[var(--c-text-faint)] text-xs">
+      Selecione um contato para conversar.
+    </div>
+  );
+
   return (
-    <div className="bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl overflow-hidden shadow-2xl h-[calc(100vh-120px)] max-w-5xl mx-auto flex flex-col md:flex-row">
+    <>
+    <div className="bg-[var(--c-surface)] border border-rose-500/20 rounded-3xl overflow-hidden shadow-2xl h-[calc(100vh-180px)] max-w-5xl mx-auto flex flex-col md:flex-row">
 
       {/* Left Contacts Sidebar (list view on mobile, always visible on desktop) */}
       <div className={`w-full md:w-80 bg-[var(--c-surface-2)] border-b md:border-b-0 md:border-r border-[var(--c-border)] flex-col ${
@@ -191,143 +352,28 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
         </div>
       </div>
 
-      {/* Right Active Conversation Area (conversation view on mobile, always visible on desktop) */}
-      <div className={`flex-1 flex-col justify-between bg-[var(--c-bg)] ${
-        mobileView === 'conversation' ? 'flex' : 'hidden md:flex'
-      }`}>
-        {activeUser ? (
-          <>
-            {/* Header */}
-            <div className="p-3 sm:p-4 bg-[var(--c-surface-2)] border-b border-[var(--c-border)] flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                {/* Back button — only relevant on mobile conversation view */}
-                <button
-                  onClick={handleBackToList}
-                  className="md:hidden p-2 -ml-1 text-[var(--c-text-secondary)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] rounded-xl transition flex-shrink-0"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-
-                <div
-                  onClick={() => onSelectUser(activeUser)}
-                  className="flex items-center gap-3 cursor-pointer group min-w-0"
-                >
-                  <Avatar src={activeUser.avatar} alt={activeUser.name} isCouple={activeUser.isCouple} className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-[var(--c-text)] group-hover:text-rose-400 transition flex items-center gap-1.5 truncate">
-                      {activeUser.name}
-                      {activeUser.isCouple && <span className="text-xs text-rose-400">❤️</span>}
-                    </h3>
-                    <p className="text-[10px] text-[var(--c-accent)] truncate">
-                      @{activeUser.username} • {activeUser.isCouple ? `Casal (${activeUser.age} anos)` : `${activeUser.gender}, ${activeUser.age} anos`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Chat Body (Messages) */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {conversationMessages.length === 0 ? (
-                <div className="text-center py-16 space-y-2">
-                  <MessageSquare className="w-10 h-10 text-[var(--c-text-faint)] mx-auto" />
-                  <p className="text-xs text-[var(--c-text-muted)] font-semibold">Nenhuma mensagem trocada ainda.</p>
-                  {chatPermission.allowed && (
-                    <p className="text-[11px] text-[var(--c-accent)]">Envie um oi para começar a conversa!</p>
-                  )}
-                </div>
-              ) : (
-                conversationMessages.map(msg => {
-                  const isMe = msg.senderId === currentUser.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                    >
-                      <div
-                        className={`max-w-[75%] p-3 rounded-2xl text-xs space-y-2 ${
-                          isMe
-                            ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white rounded-br-none shadow-md shadow-rose-600/20'
-                            : 'bg-[var(--c-surface)] text-[var(--c-text-dim)] border border-[var(--c-border)] rounded-bl-none'
-                        }`}
-                      >
-                        {msg.mediaUrl && (
-                          <img
-                            src={msg.mediaUrl}
-                            alt="Foto enviada"
-                            onClick={() => setLightboxSrc(msg.mediaUrl)}
-                            className="max-w-full max-h-64 rounded-xl object-cover cursor-zoom-in"
-                          />
-                        )}
-                        {msg.text && <p className="leading-relaxed">{msg.text}</p>}
-                      </div>
-                      <span className="text-[9px] text-[var(--c-text-faint)] mt-1 px-1">{msg.timestamp}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Chat Input Field — visible to everyone, but sending requires PRO */}
-            {chatPermission.allowed ? (
-              <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)]">
-                {pendingImage && (
-                  <div className="px-3 pt-3 flex items-center gap-2">
-                    <div className="relative">
-                      <img src={pendingImage} alt="Pré-visualização" className="w-16 h-16 rounded-xl object-cover border border-[var(--c-border)]" />
-                      <button
-                        type="button"
-                        onClick={() => setPendingImage('')}
-                        className="absolute -top-1.5 -right-1.5 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <form onSubmit={handleSend} className="p-3 flex gap-2">
-                  {/* Sending photos is a PRO-only perk, even for non-PRO
-                      members who are allowed to reply to a PRO sender. */}
-                  {currentUser.isPro && (
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef.current?.click()}
-                      disabled={uploadingImage}
-                      className="px-3 py-2.5 bg-[var(--c-surface)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] rounded-xl text-[var(--c-accent)] transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
-                      title="Enviar foto (recurso VIP)"
-                    >
-                      {uploadingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
-                    </button>
-                  )}
-                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-                  <input
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder="Escreva sua mensagem..."
-                    className="flex-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 min-w-0"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sending}
-                    className="px-5 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center justify-center flex-shrink-0 disabled:opacity-60"
-                  >
-                    {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </button>
-                </form>
-              </div>
-            ) : (
-              <ChatLockBanner />
-            )}
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-[var(--c-text-faint)] text-xs">
-            Selecione um contato para conversar.
-          </div>
-        )}
+      {/* Desktop: conversation shown inline, side-by-side with the list. */}
+      <div className="hidden md:flex flex-1 flex-col justify-between bg-[var(--c-bg)]">
+        {conversationContent}
       </div>
 
       <MediaLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      {cameraOpen && (
+        <CameraCapture onCapture={handleCameraCapture} onClose={() => setCameraOpen(false)} />
+      )}
     </div>
+
+    {/* Mobile: conversation opens as its own full-screen sheet, portaled
+        straight to <body> — same fix as the notifications panel. Nesting
+        it inside the card above (which lives inside a fixed-height
+        ancestor chain) is what made the input bar get clipped/pushed
+        below the fold; a body-level portal has no such ancestor. */}
+    {mobileView === 'conversation' && createPortal(
+      <div className="md:hidden fixed inset-0 z-[100] flex flex-col bg-[var(--c-bg)]" style={{ height: '100dvh' }}>
+        {conversationContent}
+      </div>,
+      document.body
+    )}
+    </>
   );
 };

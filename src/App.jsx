@@ -7,6 +7,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginGate } from './components/layout/LoginGate';
 import { Feed } from './components/feed/Feed';
+import { TrendingFeed } from './components/feed/TrendingFeed';
 import { GroupRooms } from './components/groups/GroupRooms';
 import { ChatView } from './components/chat/ChatView';
 import { FriendsList } from './components/friends/FriendsList';
@@ -14,7 +15,8 @@ import { ProfileView } from './components/profile/ProfileView';
 import { AuthModal } from './components/auth/AuthModal';
 import { ProModal } from './components/auth/ProModal';
 import { AgeGate, isAgeVerified } from './components/auth/AgeGate';
-import { Rss, MessageCircle, Users, User, Flame, Heart } from 'lucide-react';
+import { ScreenshotGuard } from './components/common/ScreenshotGuard';
+import { Rss, MessageCircle, Users, User, Flame, Heart, TrendingUp } from 'lucide-react';
 
 const MainContent = () => {
   const { currentUser, authLoading } = useAuth();
@@ -32,6 +34,16 @@ const MainContent = () => {
     setSelectedUserForProfile(targetUser);
     setActiveTab('profile');
   };
+
+  // Distinct from just setActiveTab('profile') — that alone would leave a
+  // previously-selected other person's profile in place (e.g. after
+  // viewing someone from the feed, then coming back to "Meu Perfil").
+  const handleOpenOwnProfile = () => {
+    setSelectedUserForProfile(null);
+    setActiveTab('profile');
+  };
+
+  const isOwnProfileActive = activeTab === 'profile' && !selectedUserForProfile;
 
   if (authLoading) {
     return (
@@ -57,18 +69,30 @@ const MainContent = () => {
   return (
     <div className="min-h-screen bg-transparent text-[var(--c-text)] flex flex-col font-sans selection:bg-rose-500 selection:text-[var(--c-text)]">
       <Navbar
-        onOpenProfile={() => { setSelectedUserForProfile(null); setActiveTab('profile'); }}
+        onOpenProfile={handleOpenOwnProfile}
         onOpenFriends={() => setActiveTab('friends')}
       />
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
         {/* Desktop Sidebar */}
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          isOwnProfileActive={isOwnProfileActive}
+          onOpenOwnProfile={handleOpenOwnProfile}
+        />
 
         {/* Main Content Area */}
         <main className="flex-1 p-3 sm:p-4 md:p-6 pb-24 md:pb-8 overflow-y-auto">
           {activeTab === 'feed' && (
             <Feed
+              onOpenChatWithUser={handleOpenChatWithUser}
+              onSelectUser={handleSelectUser}
+            />
+          )}
+
+          {activeTab === 'trending' && (
+            <TrendingFeed
               onOpenChatWithUser={handleOpenChatWithUser}
               onSelectUser={handleSelectUser}
             />
@@ -106,17 +130,18 @@ const MainContent = () => {
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--c-surface-2)]/95 backdrop-blur-2xl border-t border-rose-500/20 px-2 py-1.5 flex items-center justify-around z-40 shadow-2xl">
         {[
           { id: 'feed', label: 'Feed', icon: Rss },
+          { id: 'trending', label: 'Em Alta', icon: TrendingUp, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
           { id: 'groups', label: 'Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
           { id: 'chat', label: 'Chat', icon: MessageCircle, badge: unreadMessageCount > 0 ? (unreadMessageCount > 9 ? '9+' : unreadMessageCount) : null, badgeColor: 'bg-rose-600 text-white' },
           { id: 'friends', label: 'Amigos', icon: Users },
           { id: 'profile', label: 'Perfil', icon: User }
         ].map(item => {
-          const isActive = activeTab === item.id;
+          const isActive = item.id === 'profile' ? isOwnProfileActive : activeTab === item.id;
           const Icon = item.icon;
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => item.id === 'profile' ? handleOpenOwnProfile() : setActiveTab(item.id)}
               className={`flex flex-col items-center justify-center gap-0.5 relative py-1 px-2.5 min-w-[50px] min-h-[44px] rounded-2xl transition active:scale-95 ${
                 isActive ? 'text-rose-500 font-bold bg-rose-500/10' : 'text-[var(--c-text-muted)] hover:text-[var(--c-text)]'
               }`}
@@ -136,6 +161,7 @@ const MainContent = () => {
       {/* Modals */}
       <AuthModal />
       <ProModal />
+      <ScreenshotGuard />
     </div>
   );
 };

@@ -3,13 +3,17 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Avatar } from '../common/Avatar';
 import { SupportButton } from '../common/SupportButton';
+import { TermsModal } from '../common/TermsModal';
+import { BlockedUsersModal } from '../profile/BlockedUsersModal';
 import { NotificationsBell } from './NotificationsBell';
-import { Heart, Sparkles, LogOut, Sun, Moon, Loader2, MoreVertical } from 'lucide-react';
+import { Heart, Sparkles, LogOut, Sun, Moon, Loader2, MoreVertical, ScrollText, Ban } from 'lucide-react';
 
 export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen, logout, loggingOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isBlockedModalOpen, setIsBlockedModalOpen] = useState(false);
   const menuRef = useRef(null);
 
   // Close the overflow menu on outside click or Escape.
@@ -30,7 +34,8 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
   }, [menuOpen]);
 
   return (
-    <header className="sticky top-0 z-40 bg-[var(--c-surface-2)]/90 backdrop-blur-xl border-b border-rose-500/20 px-3 lg:px-8 py-2.5">
+    <>
+    <header className="sticky top-0 z-50 bg-[var(--c-surface-2)]/90 backdrop-blur-xl border-b border-rose-500/20 px-3 lg:px-8 py-2.5">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Brand Logo */}
         <div className="flex items-center gap-2.5">
@@ -123,8 +128,22 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
                   onClick={() => setMenuOpen(false)}
                 />
 
+                <button
+                  onClick={() => { setIsTermsModalOpen(true); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition text-left"
+                >
+                  <ScrollText className="w-4 h-4 text-[var(--c-accent)]" /> Termos de Uso
+                </button>
+
                 {currentUser && (
                   <>
+                    <button
+                      onClick={() => { setIsBlockedModalOpen(true); setMenuOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-xs font-semibold text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition text-left"
+                    >
+                      <Ban className="w-4 h-4 text-[var(--c-accent)]" /> Perfis Bloqueados
+                    </button>
+
                     <div className="h-px bg-[var(--c-border)]" />
                     <button
                       onClick={() => { setMenuOpen(false); logout(); }}
@@ -142,5 +161,9 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
         </div>
       </div>
     </header>
+
+    <TermsModal isOpen={isTermsModalOpen} onClose={() => setIsTermsModalOpen(false)} />
+    {currentUser && <BlockedUsersModal isOpen={isBlockedModalOpen} onClose={() => setIsBlockedModalOpen(false)} />}
+    </>
   );
 };

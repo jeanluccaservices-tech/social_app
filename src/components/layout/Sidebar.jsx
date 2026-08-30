@@ -3,9 +3,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { Avatar } from '../common/Avatar';
 import { formatFullDateTime } from '../../utils/time';
-import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame } from 'lucide-react';
+import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame, TrendingUp } from 'lucide-react';
 
-export const Sidebar = ({ activeTab, setActiveTab }) => {
+export const Sidebar = ({ activeTab, setActiveTab, isOwnProfileActive, onOpenOwnProfile }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
   const { friendships, unreadMessageCount } = useSocial();
 
@@ -16,6 +16,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
 
   const navItems = [
     { id: 'feed', label: 'Feed & Mídias', icon: Rss, badge: null },
+    { id: 'trending', label: 'Em Alta', icon: TrendingUp, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
     { id: 'groups', label: 'Salas de Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
     { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: unreadMessageCount > 0 ? unreadMessageCount : null, badgeColor: 'bg-rose-600 text-white' },
     { id: 'friends', label: 'Amigos & Convites', icon: Users, badge: pendingRequestsCount > 0 ? pendingRequestsCount : null, badgeColor: 'bg-rose-600 text-white' },
@@ -29,13 +30,13 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
         <p className="text-[11px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider px-3 mb-2">Menu Principal</p>
 
         {navItems.map(item => {
-          const isActive = activeTab === item.id;
+          const isActive = item.id === 'profile' ? isOwnProfileActive : activeTab === item.id;
           const Icon = item.icon;
 
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => item.id === 'profile' ? onOpenOwnProfile() : setActiveTab(item.id)}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition ${
                 isActive
                   ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-lg shadow-rose-600/30'
@@ -95,7 +96,7 @@ export const Sidebar = ({ activeTab, setActiveTab }) => {
 
               {currentUser.isPro && (
                 <div className="mt-1 text-[10px] text-[var(--c-text-muted)] space-y-0.5">
-                  <div className="text-emerald-400">✔ Mensagens ilimitadas & Salas VIP</div>
+                  <div className="text-emerald-400">✔ Mensagens ilimitadas, Salas VIP & Em Alta</div>
                   {currentUser.proExpiresAt && (
                     <div>Válido até {formatFullDateTime(currentUser.proExpiresAt)}</div>
                   )}

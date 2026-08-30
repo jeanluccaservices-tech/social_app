@@ -70,6 +70,9 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_xxxxx
     post tiver imagem, move o arquivo no Storage para o prefixo `deleted/`
     do mesmo bucket (fica separado das imagens ativas, para conferência
     manual — veja "Moderação de imagens excluídas" abaixo)
+  - `report-post` — registra a denúncia em `post_reports` e envia um
+    e-mail de notificação (motivo, detalhes, dados de quem denunciou, autor
+    e conteúdo da publicação denunciada, e o link) para `REPORT_TO_EMAIL`
 
 Segredos necessários nas Edge Functions (`supabase secrets set ...`, veja
 `supabase/.env.example`):
@@ -79,6 +82,7 @@ RESEND_API_KEY=...
 SEND_EMAIL_HOOK_SECRET=v1,whsec_...
 MERCADOPAGO_ACCESS_TOKEN=...
 SITE_URL=https://seu-dominio-de-producao
+REPORT_TO_EMAIL=denuncias@lovevibe.com.br
 ```
 
 O valor da assinatura PRÓ (`PRO_PRICE_BRL`) está definido em

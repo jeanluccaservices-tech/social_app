@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { noDownloadImageProps } from '../../lib/mediaProtection';
 
 // Full-screen photo viewer used by the profile's Media tab.
 export const MediaLightbox = ({ src, onClose }) => {
@@ -7,7 +8,7 @@ export const MediaLightbox = ({ src, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
       onClick={onClose}
     >
       <button
@@ -21,6 +22,7 @@ export const MediaLightbox = ({ src, onClose }) => {
         alt="Mídia ampliada"
         onClick={(e) => e.stopPropagation()}
         className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+        {...noDownloadImageProps}
       />
     </div>
   );
