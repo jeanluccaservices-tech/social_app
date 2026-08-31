@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
+import { useToast } from '../../context/ToastContext';
 import { CreatePost } from './CreatePost';
 import { PostCard } from './PostCard';
 import { isWithinRadius } from '../../lib/geo';
@@ -24,10 +25,14 @@ const matchesPreferences = (currentUser, author) => {
   return ageOk && genderOk && locationOk;
 };
 
-export const Feed = ({ onOpenChatWithUser, onSelectUser }) => {
+export const Feed = ({ onOpenChatWithUser, onSelectUser, highlightPostId, highlightType, onHighlightConsumed }) => {
   const { currentUser, users } = useAuth();
   const { posts, postsLoading, areFriends } = useSocial();
+  const { showToast } = useToast();
   const [source, setSource] = useState('all'); // 'friends' | 'recommended' | 'all'
+  const [pulsePostId, setPulsePostId] = useState(null);
+  const [pulseType, setPulseType] = useState(null);
+  const postRefs = useRef({});
 
   const authorsById = useMemo(() => {
     const map = new Map();
@@ -58,6 +63,32 @@ export const Feed = ({ onOpenChatWithUser, onSelectUser }) => {
 
     return sortedPosts;
   }, [source, sortedPosts, currentUser, authorsById, areFriends]);
+
+  // Landing here from a "liked/commented on your post" notification: jump
+  // to "Todos" (the post may not match the current friends/recommended
+  // filter) and remember which post to scroll to once it's in the list.
+  useEffect(() => {
+    if (!highlightPostId) return;
+    if (!postsLoading && !posts.some(p => p.id === highlightPostId)) {
+      showToast('Não foi possível abrir a publicação — ela pode ter sido removida.', 'error');
+      onHighlightConsumed?.();
+      return;
+    }
+    setSource('all');
+    setPulsePostId(highlightPostId);
+    setPulseType(highlightType);
+    onHighlightConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightPostId, postsLoading]);
+
+  useEffect(() => {
+    if (!pulsePostId) return;
+    const node = postRefs.current[pulsePostId];
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = setTimeout(() => { setPulsePostId(null); setPulseType(null); }, 2200);
+    return () => clearTimeout(timer);
+  }, [pulsePostId, visiblePosts]);
 
   const tabs = [
     { id: 'friends', label: 'Amigos', icon: Users },
@@ -114,12 +145,18 @@ export const Feed = ({ onOpenChatWithUser, onSelectUser }) => {
           </div>
         ) : (
           visiblePosts.map(post => (
-            <PostCard
+            <div
               key={post.id}
-              post={post}
-              onOpenChatWithUser={onOpenChatWithUser}
-              onSelectUser={onSelectUser}
-            />
+              ref={(el) => { postRefs.current[post.id] = el; }}
+              className={post.id === pulsePostId ? 'rounded-3xl ring-2 ring-rose-500 ring-offset-2 ring-offset-[var(--c-bg)] transition' : ''}
+            >
+              <PostCard
+                post={post}
+                onOpenChatWithUser={onOpenChatWithUser}
+                onSelectUser={onSelectUser}
+                autoOpenComments={post.id === pulsePostId && pulseType === 'post_comment'}
+              />
+            </div>
           ))
         )}
       </div>

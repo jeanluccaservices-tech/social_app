@@ -24,10 +24,25 @@ const MainContent = () => {
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'groups' | 'chat' | 'friends' | 'profile'
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const [selectedChatUser, setSelectedChatUser] = useState(null);
+  const [highlightPostId, setHighlightPostId] = useState(null);
+  const [highlightType, setHighlightType] = useState(null);
 
   const handleOpenChatWithUser = (targetUser) => {
     setSelectedChatUser(targetUser);
     setActiveTab('chat');
+  };
+
+  // From a "liked/commented on your post" notification — go straight to
+  // the post itself instead of just the profile.
+  const handleOpenPost = (postId, type) => {
+    setHighlightPostId(postId);
+    setHighlightType(type);
+    setActiveTab('feed');
+  };
+
+  const clearHighlightedPost = () => {
+    setHighlightPostId(null);
+    setHighlightType(null);
   };
 
   const handleSelectUser = (targetUser) => {
@@ -71,6 +86,7 @@ const MainContent = () => {
       <Navbar
         onOpenProfile={handleOpenOwnProfile}
         onOpenFriends={() => setActiveTab('friends')}
+        onOpenPost={handleOpenPost}
       />
 
       <div className="flex-1 flex max-w-7xl w-full mx-auto">
@@ -88,6 +104,9 @@ const MainContent = () => {
             <Feed
               onOpenChatWithUser={handleOpenChatWithUser}
               onSelectUser={handleSelectUser}
+              highlightPostId={highlightPostId}
+              highlightType={highlightType}
+              onHighlightConsumed={clearHighlightedPost}
             />
           )}
 

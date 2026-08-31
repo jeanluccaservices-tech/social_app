@@ -17,7 +17,7 @@ const FILTERS = [
   { id: 'friends', label: 'Amizades', types: ['friend_request', 'friend_accepted'] }
 ];
 
-export const NotificationsBell = ({ onOpenProfile, onOpenFriends }) => {
+export const NotificationsBell = ({ onOpenProfile, onOpenFriends, onOpenPost }) => {
   const { notifications, notificationsLoading, unreadNotificationCount, markNotificationsRead, markAllNotificationsRead } = useSocial();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('all');
@@ -43,8 +43,12 @@ export const NotificationsBell = ({ onOpenProfile, onOpenFriends }) => {
   const handleNotificationClick = (n) => {
     markNotificationsRead([n.id]);
     setOpen(false);
-    if (n.type === 'post_like' || n.type === 'post_comment') onOpenProfile?.();
-    else onOpenFriends?.();
+    if (n.type === 'post_like' || n.type === 'post_comment') {
+      if (n.postId) onOpenPost?.(n.postId, n.type);
+      else onOpenProfile?.();
+    } else {
+      onOpenFriends?.();
+    }
   };
 
   const panelBody = (

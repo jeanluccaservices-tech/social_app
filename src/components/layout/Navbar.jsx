@@ -8,7 +8,7 @@ import { BlockedUsersModal } from '../profile/BlockedUsersModal';
 import { NotificationsBell } from './NotificationsBell';
 import { Heart, Sparkles, LogOut, Sun, Moon, Loader2, MoreVertical, ScrollText, Ban } from 'lucide-react';
 
-export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
+export const Navbar = ({ onOpenProfile, onOpenFriends, onOpenPost }) => {
   const { currentUser, setIsAuthModalOpen, setIsProModalOpen, logout, loggingOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,7 +52,7 @@ export const Navbar = ({ onOpenProfile, onOpenFriends }) => {
 
         {/* Right Section Actions */}
         <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-          {currentUser && <NotificationsBell onOpenProfile={onOpenProfile} onOpenFriends={onOpenFriends} />}
+          {currentUser && <NotificationsBell onOpenProfile={onOpenProfile} onOpenFriends={onOpenFriends} onOpenPost={onOpenPost} />}
 
           {/* PRO Badge / Upgrade Button */}
           {currentUser ? (
