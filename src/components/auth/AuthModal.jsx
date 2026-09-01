@@ -15,8 +15,11 @@ const RESEND_COOLDOWN_SECONDS = 180;
 const MAX_MANUAL_RESENDS = 2;
 
 export const AuthModal = () => {
-  const { isAuthModalOpen, setIsAuthModalOpen, login, register, verifySignup, resendVerification } = useAuth();
-  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'verify'
+  const {
+    isAuthModalOpen, setIsAuthModalOpen, login, register, verifySignup, resendVerification,
+    requestPasswordReset, confirmPasswordReset
+  } = useAuth();
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'verify' | 'forgot' | 'reset-verify'
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,6 +30,13 @@ export const AuthModal = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendCount, setResendCount] = useState(0);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+
+  // Forgot-password flow: request e-mail -> enter code + new password
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [pendingResetEmail, setPendingResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [resetNewPassword, setResetNewPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -218,6 +228,58 @@ export const AuthModal = () => {
     }
   };
 
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setInfoMsg('');
+    if (!forgotEmail) {
+      setErrorMsg('Informe seu e-mail.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await requestPasswordReset(forgotEmail);
+    setIsSubmitting(false);
+
+    if (!res.success) {
+      setErrorMsg(res.message);
+      return;
+    }
+    setPendingResetEmail(forgotEmail);
+    setResetCode('');
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setMode('reset-verify');
+    setInfoMsg('Código enviado! Confira a caixa de entrada principal e também o spam.');
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setInfoMsg('');
+
+    if (resetCode.trim().length < 6) {
+      setErrorMsg('Informe o código de 6 dígitos enviado por e-mail.');
+      return;
+    }
+    if (resetNewPassword.length < 6) {
+      setErrorMsg('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setErrorMsg('As senhas não coincidem.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const res = await confirmPasswordReset(pendingResetEmail, resetCode.trim(), resetNewPassword);
+    setIsSubmitting(false);
+
+    if (!res.success) {
+      setErrorMsg(res.message);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-lg bg-[var(--c-surface)] border border-rose-500/30 rounded-3xl shadow-2xl shadow-rose-950/50 overflow-hidden my-8">
@@ -245,7 +307,7 @@ export const AuthModal = () => {
           <p className="text-sm text-[var(--c-accent)] mt-1">Conexões autênticas para solteiros e casais</p>
 
           {/* Mode Switcher Tabs */}
-          {mode !== 'verify' && (
+          {(mode === 'login' || mode === 'register') && (
             <div className="flex bg-[var(--c-surface-3)] p-1 rounded-2xl border border-[var(--c-border)] mt-6">
               <button
                 onClick={() => { setMode('login'); setErrorMsg(''); setInfoMsg(''); }}
@@ -375,6 +437,13 @@ export const AuthModal = () => {
                     className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2.5 pl-10 pr-4 text-sm text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 transition"
                   />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => { setForgotEmail(loginIdentifier); setErrorMsg(''); setInfoMsg(''); setMode('forgot'); }}
+                  className="mt-1.5 text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition"
+                >
+                  Esqueci minha senha
+                </button>
               </div>
 
               <button
@@ -384,6 +453,120 @@ export const AuthModal = () => {
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {isSubmitting ? 'Entrando...' : 'Entrar na Conta'}
+              </button>
+            </form>
+          ) : mode === 'forgot' ? (
+            <form onSubmit={handleForgotSubmit} className="space-y-4">
+              <div className="flex flex-col items-center text-center gap-2 pb-1">
+                <div className="w-11 h-11 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5 text-rose-400" />
+                </div>
+                <p className="text-xs text-[var(--c-text-secondary)]">
+                  Informe o e-mail da sua conta para receber um código de 6 dígitos e redefinir sua senha.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">E-mail</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-[var(--c-text-muted)]" />
+                  <input
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2.5 pl-10 pr-4 text-sm text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-xl shadow-lg shadow-rose-600/30 transition transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none flex items-center justify-center gap-2"
+              >
+                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isSubmitting ? 'Enviando...' : 'Enviar código de recuperação'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setErrorMsg(''); setInfoMsg(''); }}
+                className="w-full text-[11px] text-[var(--c-text-muted)] hover:text-[var(--c-text)] transition"
+              >
+                Voltar para o login
+              </button>
+            </form>
+          ) : mode === 'reset-verify' ? (
+            <form onSubmit={handleResetSubmit} className="space-y-4">
+              <div className="flex flex-col items-center text-center gap-2 pb-1">
+                <div className="w-11 h-11 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center">
+                  <KeyRound className="w-5 h-5 text-rose-400" />
+                </div>
+                <p className="text-xs text-[var(--c-text-secondary)]">
+                  Enviamos um código de 6 dígitos para{' '}
+                  <span className="font-semibold text-[var(--c-text)]">{pendingResetEmail}</span>.
+                  Digite-o abaixo e escolha sua nova senha.
+                </p>
+                <p className="text-[11px] text-[var(--c-text-muted)]">
+                  Não achou o e-mail? Confira a caixa de entrada principal e também a pasta de spam/lixo eletrônico.
+                </p>
+              </div>
+
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={resetCode}
+                onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                className="w-full text-center tracking-[0.6em] text-xl font-bold bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-3 px-4 text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 transition"
+              />
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">Nova senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-[var(--c-text-muted)]" />
+                  <input
+                    type="password"
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2.5 pl-10 pr-4 text-sm text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">Confirmar nova senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-[var(--c-text-muted)]" />
+                  <input
+                    type="password"
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2.5 pl-10 pr-4 text-sm text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500 transition"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold rounded-xl shadow-lg shadow-rose-600/30 transition transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none flex items-center justify-center gap-2"
+              >
+                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isSubmitting ? 'Redefinindo...' : 'Redefinir senha'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setErrorMsg(''); setInfoMsg(''); }}
+                className="w-full text-[11px] text-[var(--c-text-muted)] hover:text-[var(--c-text)] transition"
+              >
+                Voltar para o login
               </button>
             </form>
           ) : (

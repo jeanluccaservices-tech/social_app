@@ -2,7 +2,8 @@
 
 Rede social de relacionamentos para maiores de 18 anos, com feed, chat direto,
 salas de grupo temáticas, match por swipe e uma assinatura PRÓ paga via
-Mercado Pago (Pix, cartão ou boleto).
+Stripe (checkout único, com cartão, boleto e Pix conforme habilitado na
+conta Stripe).
 
 ## Stack
 
@@ -11,8 +12,9 @@ Mercado Pago (Pix, cartão ou boleto).
 - **Tailwind CSS v4** — tema claro/escuro via variáveis CSS em `src/index.css`
   (`ThemeContext`)
 - **Supabase** — Postgres + Auth + Storage + Edge Functions (`supabase/`)
-- **Mercado Pago** — cobrança da assinatura PRÓ (Checkout Pro para
-  cartão/boleto, API de Pix para QR Code)
+- **Stripe** — cobrança da assinatura PRÓ via uma única Checkout Session;
+  os métodos de pagamento exibidos (cartão, boleto, Pix) são os habilitados
+  no Dashboard do Stripe, não fixados no código
 - **Resend** — envio do e-mail com código de verificação no cadastro
 - **lucide-react** — ícones
 
@@ -35,8 +37,9 @@ Mercado Pago (Pix, cartão ou boleto).
   para membros PRÓ
 - **Amigos & Explorar** — envio/aceite de solicitações de amizade, busca e
   filtros por sexo/idade/distância
-- **Assinatura PRÓ** — R$ 24,90/mês, sem renovação automática, pagável via
-  Pix, cartão ou boleto (`src/components/auth/ProModal.jsx`)
+- **Assinatura PRÓ** — R$ 24,90/mês, sem renovação automática, um único
+  botão que abre o Checkout do Stripe com os métodos de pagamento
+  habilitados na conta (`src/components/auth/ProModal.jsx`)
 - **Perfis de casal**, avisos de moderação/denúncia e notificações
 
 ## Rodando localmente
@@ -59,12 +62,37 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_xxxxx
 ## Backend (Supabase)
 
 - `supabase/migrations/` — schema do banco (perfis, amizades, mensagens,
-  salas de grupo, denúncias, pagamentos, etc.), aplicado em ordem numérica
+  salas de grupo, denúncias, pagamentos, rate limiting, etc.), aplicado em
+  ordem numérica
+- `supabase/functions/_shared/rateLimit.ts` — helper de rate limiting
+  (`checkRateLimit`/`clientIdentity`) reusado pelas Edge Functions abaixo,
+  apoiado na tabela `rate_limit_hits` e na função `check_rate_limit()`
+  (`0028_rate_limiting.sql`)
 - `supabase/functions/` — Edge Functions:
-  - `mp-checkout` — cria a preferência de Checkout Pro (cartão/boleto)
-  - `mp-pix-payment` — gera cobrança Pix (QR Code)
-  - `mp-webhook` — recebe a confirmação de pagamento do Mercado Pago e
-    ativa o PRÓ do usuário
+  - `request-password-reset` — fluxo de "esqueci minha senha": limita a 3
+    e-mails de recuperação por endereço a cada 24h (mais um limite geral
+    por IP), e então dispara `supabase.auth.resetPasswordForEmail`, cujo
+    e-mail é entregue pelo hook `send-email` (`case 'recovery'`)
+  - `stripe-checkout` — cria a Checkout Session do Stripe; os métodos de
+    pagamento mostrados vêm do que está habilitado no Dashboard (Settings >
+    Payment methods), sem `payment_method_types` fixo no código
+  - `stripe-pix-payment` — gera cobrança Pix diretamente via Payment
+    Intents (QR Code exibido no app). **Não usada pelo fluxo atual** — o
+    `ProModal` só chama `stripe-checkout`, que já cobre Pix
+    automaticamente quando habilitado; mantida caso um fluxo de Pix
+    dedicado (fora do Checkout) seja necessário no futuro
+  - `stripe-webhook` — recebe a confirmação de pagamento do Stripe
+    (assinatura verificada via `STRIPE_WEBHOOK_SECRET`) e ativa o PRÓ do
+    usuário
+  - `cancel-pro-subscription` — cancelamento da assinatura PRÓ com
+    reembolso integral via Stripe, disponível até 7 dias após o pagamento
+    (direito de arrependimento, CDC art. 49). Busca o pagamento aprovado
+    mais recente ainda não reembolsado (`payment_transactions.refunded_at`
+    nulo), chama `stripe.refunds.create`, recua `pro_expires_at` em 1 mês e
+    envia um e-mail de notificação para `reembolso@lovevibe.com.br` via
+    Resend. Acessível por um link discreto dentro do `ProModal` quando a
+    assinatura está ativa, que abre um modal de confirmação avisando da
+    perda dos benefícios antes de efetivar o cancelamento
   - `send-email` — dispara o e-mail de verificação de cadastro via Resend
   - `delete-post` — exclusão lógica de post: marca `deleted_at` e, se o
     post tiver imagem, move o arquivo no Storage para o prefixo `deleted/`
@@ -74,24 +102,41 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_xxxxx
     e-mail de notificação (motivo, detalhes, dados de quem denunciou, autor
     e conteúdo da publicação denunciada, e o link) para `REPORT_TO_EMAIL`
 
+  `stripe-checkout`, `stripe-pix-payment`, `cancel-pro-subscription`,
+  `report-post`, `delete-post` e `request-password-reset` são protegidas
+  por rate limit (por usuário logado ou por IP, via `_shared/rateLimit.ts`)
+  contra abuso/spam —
+  `stripe-webhook` (assinado pelo Stripe) e `send-email` (chamado pelo
+  GoTrue) não precisam, pela mesma razão que não têm verificação de JWT.
+
 Segredos necessários nas Edge Functions (`supabase secrets set ...`, veja
 `supabase/.env.example`):
 
 ```bash
 RESEND_API_KEY=...
 SEND_EMAIL_HOOK_SECRET=v1,whsec_...
-MERCADOPAGO_ACCESS_TOKEN=...
+STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=whsec_...
 SITE_URL=https://seu-dominio-de-producao
 REPORT_TO_EMAIL=denuncias@lovevibe.com.br
 ```
 
+Configure no Dashboard do Stripe (Webhooks) o endpoint
+`https://<seu-projeto>.functions.supabase.co/stripe-webhook`, escutando os
+eventos `checkout.session.completed` e `payment_intent.succeeded`, e copie o
+signing secret gerado para `STRIPE_WEBHOOK_SECRET`. Para testar localmente,
+use o Stripe CLI: `stripe listen --forward-to <url-local-da-function>`.
+
 O valor da assinatura PRÓ (`PRO_PRICE_BRL`) está definido em
-`mp-checkout/index.ts` e `mp-pix-payment/index.ts` — ao alterar o preço,
-depois de editar o código é preciso reimplantar as funções:
+`stripe-checkout/index.ts` (e replicado em `stripe-pix-payment/index.ts`,
+hoje não usada) — ao alterar o preço, depois de editar o código é preciso
+reimplantar as funções:
 
 ```bash
-supabase functions deploy mp-checkout
-supabase functions deploy mp-pix-payment
+supabase functions deploy stripe-checkout
+supabase functions deploy stripe-pix-payment
+supabase functions deploy stripe-webhook
+supabase functions deploy cancel-pro-subscription
 ```
 
 ### Moderação de imagens excluídas

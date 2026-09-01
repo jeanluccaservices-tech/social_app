@@ -1,40 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
 import {
   X, CheckCircle, MessageSquare, Users, Target, Crown, ShieldCheck, CreditCard,
-  Image as ImageIcon, Loader2, CalendarClock, QrCode, Copy, Check, ArrowLeft, TrendingUp
+  Image as ImageIcon, Loader2, CalendarClock, TrendingUp
 } from 'lucide-react';
 import { formatFullDateTime } from '../../utils/time';
-
-const PIX_POLL_INTERVAL_MS = 4000;
-const PIX_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+import { SupportButton } from '../common/SupportButton';
 
 export const ProModal = () => {
-  const { currentUser, isProModalOpen, setIsProModalOpen, setIsAuthModalOpen, refreshCurrentUser } = useAuth();
-  const [view, setView] = useState('plans'); // 'plans' | 'pix-cpf' | 'pix-qr' | 'pix-paid'
+  const { currentUser, isProModalOpen, setIsProModalOpen, setIsAuthModalOpen, cancelProSubscription } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-
-  const [cpf, setCpf] = useState('');
-  const [pixData, setPixData] = useState(null); // { qrCode, qrCodeBase64 }
-  const [pixCopied, setPixCopied] = useState(false);
-  const expiryBeforePixRef = useRef(null);
-  const pollTimerRef = useRef(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelMsg, setCancelMsg] = useState('');
 
   const isPro = currentUser?.isPro;
 
-  useEffect(() => {
-    return () => clearInterval(pollTimerRef.current);
-  }, []);
-
   const resetAndClose = () => {
-    clearInterval(pollTimerRef.current);
-    setView('plans');
     setErrorMsg('');
-    setCpf('');
-    setPixData(null);
+    setShowCancelConfirm(false);
+    setCancelMsg('');
     setIsProModalOpen(false);
+  };
+
+  const handleCancelSubscription = async () => {
+    setIsCancelling(true);
+    setCancelMsg('');
+    const { success, message } = await cancelProSubscription();
+    setIsCancelling(false);
+    if (!success) {
+      setCancelMsg(message);
+      return;
+    }
+    setShowCancelConfirm(false);
   };
 
   const invokeAndReadError = async (fnName, body) => {
@@ -55,10 +55,12 @@ export const ProModal = () => {
     return { data, message: null };
   };
 
-  // Card/boleto: redirect to Mercado Pago's hosted checkout. PRO is
-  // activated by the mp-webhook Edge Function once payment is confirmed —
-  // not from this click.
-  const handleCardOrBoleto = async () => {
+  // Single button for every payment method: redirects to Stripe's hosted
+  // checkout, which shows whatever methods (card, boleto, Pix, ...) are
+  // enabled on the Stripe account's payment settings — no per-method code
+  // needed here. PRO is activated by the stripe-webhook Edge Function once
+  // payment is confirmed, not from this click.
+  const handleSubscribe = async () => {
     if (!currentUser) {
       setIsProModalOpen(false);
       setIsAuthModalOpen(true);
@@ -66,78 +68,20 @@ export const ProModal = () => {
     }
     setErrorMsg('');
     setIsProcessing(true);
-    const { data, message } = await invokeAndReadError('mp-checkout');
+    const { data, message } = await invokeAndReadError('stripe-checkout');
     setIsProcessing(false);
 
-    if (message || !data?.init_point) {
+    if (message || !data?.url) {
       setErrorMsg(message || 'Não foi possível iniciar o pagamento. Tente novamente.');
       return;
     }
-    window.location.href = data.init_point;
-  };
-
-  const handlePixSubmit = async (e) => {
-    e.preventDefault();
-    if (!currentUser) {
-      setIsProModalOpen(false);
-      setIsAuthModalOpen(true);
-      return;
-    }
-    const digits = cpf.replace(/\D/g, '');
-    if (digits.length !== 11) {
-      setErrorMsg('Informe um CPF válido (11 dígitos).');
-      return;
-    }
-
-    setErrorMsg('');
-    setIsProcessing(true);
-    const { data, message } = await invokeAndReadError('mp-pix-payment', { cpf: digits });
-    setIsProcessing(false);
-
-    if (message || !data?.qr_code) {
-      setErrorMsg(message || 'Não foi possível gerar o Pix. Tente novamente.');
-      return;
-    }
-
-    setPixData({ qrCode: data.qr_code, qrCodeBase64: data.qr_code_base64 });
-    expiryBeforePixRef.current = currentUser?.proExpiresAt || null;
-    setView('pix-qr');
-    startPollingForApproval();
-  };
-
-  // The webhook is the real source of truth for activating PRO; this
-  // polling is purely so the modal can react and say "paid" without the
-  // person having to manually reload the page.
-  const startPollingForApproval = () => {
-    const startedAt = Date.now();
-    pollTimerRef.current = setInterval(async () => {
-      if (Date.now() - startedAt > PIX_POLL_TIMEOUT_MS) {
-        clearInterval(pollTimerRef.current);
-        return;
-      }
-      const { data } = await supabase.from('profiles').select('pro_expires_at').eq('id', currentUser.id).maybeSingle();
-      const before = expiryBeforePixRef.current;
-      if (data?.pro_expires_at && (!before || new Date(data.pro_expires_at) > new Date(before))) {
-        clearInterval(pollTimerRef.current);
-        await refreshCurrentUser();
-        setView('pix-paid');
-      }
-    }, PIX_POLL_INTERVAL_MS);
-  };
-
-  const handleCopyPixCode = async () => {
-    try {
-      await navigator.clipboard.writeText(pixData.qrCode);
-      setPixCopied(true);
-      setTimeout(() => setPixCopied(false), 2000);
-    } catch {
-      // clipboard API unavailable; the code is still selectable by hand
-    }
+    window.location.href = data.url;
   };
 
   if (!isProModalOpen) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-lg bg-[var(--c-surface)] border border-amber-500/40 rounded-3xl shadow-2xl shadow-amber-500/20 overflow-hidden p-6 my-auto">
 
@@ -145,21 +89,14 @@ export const ProModal = () => {
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-yellow-500/20 rounded-full blur-3xl pointer-events-none"></div>
 
+        <SupportButton className="absolute top-5 left-5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-text-muted)] hover:text-rose-400 transition" />
+
         <button
           onClick={resetAndClose}
           className="absolute top-4 right-4 text-[var(--c-text-muted)] hover:text-[var(--c-text)] p-2 rounded-full hover:bg-[var(--c-overlay-10)] transition"
         >
           <X className="w-5 h-5" />
         </button>
-
-        {(view === 'pix-cpf' || view === 'pix-qr') && (
-          <button
-            onClick={() => { clearInterval(pollTimerRef.current); setView('plans'); setErrorMsg(''); }}
-            className="absolute top-4 left-4 text-[var(--c-text-muted)] hover:text-[var(--c-text)] p-2 rounded-full hover:bg-[var(--c-overlay-10)] transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-        )}
 
         {/* Header */}
         <div className="text-center mb-5">
@@ -172,191 +109,152 @@ export const ProModal = () => {
           <p className="text-xs text-[var(--c-pro-text)] mt-1">Conexões sem limites e recursos exclusivos para solteiros e casais</p>
         </div>
 
-        {view === 'pix-cpf' ? (
-          <form onSubmit={handlePixSubmit} className="space-y-3">
-            <div className="p-4 bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-2xl space-y-3">
-              <p className="text-xs text-[var(--c-text-secondary)]">
-                O Pix exige o CPF de quem está pagando (exigência do Banco Central, não do LoveVibe).
-              </p>
-              <div>
-                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">CPF</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                  placeholder="Somente números"
-                  className="w-full bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl py-2.5 px-3 text-sm text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
-                />
-              </div>
+        {/* Active Pro Status Banner — 1 month from payment, manual renewal only */}
+        {isPro ? (
+          <div className="p-4 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50 rounded-2xl text-center space-y-2 mb-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-black text-xs font-extrabold rounded-full shadow-md">
+              <ShieldCheck className="w-4 h-4 fill-black" /> Assinatura VIP Ativa
             </div>
-            {errorMsg && <p className="text-[11px] text-center text-red-400 font-medium">{errorMsg}</p>}
-            <button
-              type="submit"
-              disabled={isProcessing}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs rounded-xl shadow-xl shadow-amber-500/30 transition flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
-              <span>{isProcessing ? 'Gerando Pix...' : 'Gerar QR Code Pix'}</span>
-            </button>
-          </form>
-        ) : view === 'pix-qr' ? (
-          <div className="space-y-3 text-center">
-            <p className="text-xs text-[var(--c-text-secondary)]">Escaneie o QR Code no app do seu banco ou copie o código abaixo.</p>
-            {pixData?.qrCodeBase64 && (
-              <img
-                src={`data:image/png;base64,${pixData.qrCodeBase64}`}
-                alt="QR Code Pix"
-                className="w-48 h-48 mx-auto rounded-xl border border-[var(--c-border)] bg-white p-2"
-              />
+            {currentUser?.proExpiresAt && (
+              <p className="text-xs text-[var(--c-text)] font-semibold flex items-center justify-center gap-1.5">
+                <CalendarClock className="w-3.5 h-3.5 text-amber-400" />
+                Válido até {formatFullDateTime(currentUser.proExpiresAt)}
+              </p>
             )}
-            <button
-              type="button"
-              onClick={handleCopyPixCode}
-              className="w-full py-2.5 bg-[var(--c-surface-3)] hover:bg-[var(--c-overlay-10)] border border-[var(--c-border)] text-[var(--c-text)] font-semibold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
-            >
-              {pixCopied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-              {pixCopied ? 'Código copiado!' : 'Copiar código Pix (copia e cola)'}
-            </button>
-            <p className="text-[10px] text-[var(--c-text-muted)] flex items-center justify-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Aguardando confirmação do pagamento...
+            <p className="text-[10px] text-[var(--c-pro-text)]">
+              * A renovação NÃO é automática. Depois dessa data e hora, para continuar com os benefícios VIP você precisa assinar novamente.
             </p>
-          </div>
-        ) : view === 'pix-paid' ? (
-          <div className="text-center space-y-3 py-4">
-            <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto" />
-            <p className="text-sm font-bold text-[var(--c-text)]">Pagamento confirmado! Sua conta já é VIP.</p>
+
             <button
-              onClick={resetAndClose}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold text-xs rounded-xl transition"
+              onClick={() => { setCancelMsg(''); setShowCancelConfirm(true); }}
+              className="text-[9px] text-[var(--c-text-faint)] underline decoration-dotted hover:text-[var(--c-text-muted)] transition"
             >
-              Fechar
+              Cancelar assinatura
             </button>
           </div>
         ) : (
-          <>
-            {/* Active Pro Status Banner — 1 month from payment, manual renewal only */}
-            {isPro ? (
-              <div className="p-4 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50 rounded-2xl text-center space-y-2 mb-4">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500 text-black text-xs font-extrabold rounded-full shadow-md">
-                  <ShieldCheck className="w-4 h-4 fill-black" /> Assinatura VIP Ativa
-                </div>
-                {currentUser?.proExpiresAt && (
-                  <p className="text-xs text-[var(--c-text)] font-semibold flex items-center justify-center gap-1.5">
-                    <CalendarClock className="w-3.5 h-3.5 text-amber-400" />
-                    Válido até {formatFullDateTime(currentUser.proExpiresAt)}
-                  </p>
-                )}
-                <p className="text-[10px] text-[var(--c-pro-text)]">
-                  * A renovação NÃO é automática. Depois dessa data e hora, para continuar com os benefícios VIP você precisa assinar novamente.
-                </p>
-              </div>
-            ) : (
-              <div className="p-4 bg-gradient-to-r from-amber-950/40 via-yellow-950/40 to-amber-950/40 border border-amber-500/30 rounded-2xl text-center mb-4 space-y-1">
-                <span className="text-[10px] uppercase tracking-widest text-amber-400 font-extrabold">Acesso VIP mensal</span>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="text-3xl font-black text-[var(--c-text)]">R$ 24,90</span>
-                  <span className="text-xs text-[var(--c-pro-text)]">/ mês</span>
-                </div>
-                <p className="text-[10px] text-[var(--c-text-muted)]">
-                  Acesso imediato assim que o pagamento for aprovado, válido até o mesmo dia e horário do mês seguinte. Sem renovação automática.
-                </p>
-              </div>
-            )}
-
-            {/* Benefits list */}
-            <div className="space-y-3 bg-[var(--c-surface-3)] p-4 rounded-2xl border border-amber-500/20 mb-6">
-              {[
-                {
-                  title: 'Envie Mensagens no Chat Direto',
-                  desc: 'Apenas membros VIP podem enviar mensagens diretas para qualquer pessoa da rede.',
-                  icon: MessageSquare
-                },
-                {
-                  title: 'Envie Fotos no Chat Privado',
-                  desc: 'Membros VIP podem compartilhar fotos diretamente nas conversas privadas, não só texto.',
-                  icon: ImageIcon
-                },
-                {
-                  title: 'Salas de Grupos Exclusivas para Membros VIP',
-                  desc: 'Visualize e participe de bate-papos coletivos para casais, enofilia, viagens e festas.',
-                  icon: Users
-                },
-                {
-                  title: 'Aba "Em Alta" Exclusiva',
-                  desc: 'Veja as publicações com mais curtidas e comentários de toda a rede, só para membros VIP.',
-                  icon: TrendingUp
-                },
-                {
-                  title: 'Recomendações de Perfis Personalizadas',
-                  desc: 'Suas preferências de idade, sexo e localização priorizam o que aparece no seu feed.',
-                  icon: Target
-                },
-                {
-                  title: 'Selo Dourado de Destaque no Feed',
-                  desc: 'Ganhe destaque oficial VIP em suas publicações e no chat.',
-                  icon: Crown
-                }
-              ].map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mt-0.5 flex-shrink-0">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-[var(--c-text)] flex items-center gap-1">
-                        {item.title} <CheckCircle className="w-3 h-3 text-emerald-400" />
-                      </h4>
-                      <p className="text-[10px] text-[var(--c-text-muted)]">{item.desc}</p>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="p-4 bg-gradient-to-r from-amber-950/40 via-yellow-950/40 to-amber-950/40 border border-amber-500/30 rounded-2xl text-center mb-4 space-y-1">
+            <span className="text-[10px] uppercase tracking-widest text-amber-400 font-extrabold">Acesso VIP mensal</span>
+            <div className="flex items-baseline justify-center gap-1">
+              <span className="text-3xl font-black text-[var(--c-text)]">R$ 24,90</span>
+              <span className="text-xs text-[var(--c-pro-text)]">/ mês</span>
             </div>
+            <p className="text-[10px] text-[var(--c-text-muted)]">
+              Acesso imediato assim que o pagamento for aprovado, válido até o mesmo dia e horário do mês seguinte. Sem renovação automática.
+            </p>
+          </div>
+        )}
 
-            {/* Official Purchase Action — pick a payment method */}
-            {!isPro ? (
-              <div className="space-y-2">
-                {errorMsg && (
-                  <p className="text-[11px] text-center text-red-400 font-medium">{errorMsg}</p>
-                )}
-                <p className="text-[10px] font-bold text-[var(--c-text-muted)] uppercase tracking-wider text-center">
-                  Assinar Plano VIP (R$ 24,90) — Escolha a forma de pagamento
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={handleCardOrBoleto}
-                    disabled={isProcessing}
-                    className="py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs rounded-xl shadow-xl shadow-amber-500/30 transition transform hover:scale-102 active:scale-98 flex flex-col items-center justify-center gap-1 disabled:opacity-60"
-                  >
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                    <span>Cartão ou Boleto</span>
-                  </button>
-                  <button
-                    onClick={() => { setErrorMsg(''); setView('pix-cpf'); }}
-                    disabled={isProcessing}
-                    className="py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs rounded-xl shadow-xl shadow-amber-500/30 transition transform hover:scale-102 active:scale-98 flex flex-col items-center justify-center gap-1 disabled:opacity-60"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>Pix</span>
-                  </button>
+        {/* Benefits list */}
+        <div className="space-y-3 bg-[var(--c-surface-3)] p-4 rounded-2xl border border-amber-500/20 mb-6">
+          {[
+            {
+              title: 'Envie Mensagens no Chat Direto',
+              desc: 'Apenas membros VIP podem enviar mensagens diretas para qualquer pessoa da rede.',
+              icon: MessageSquare
+            },
+            {
+              title: 'Envie Fotos no Chat Privado',
+              desc: 'Membros VIP podem compartilhar fotos diretamente nas conversas privadas, não só texto.',
+              icon: ImageIcon
+            },
+            {
+              title: 'Salas de Grupos Exclusivas para Membros VIP',
+              desc: 'Visualize e participe de bate-papos coletivos para casais, enofilia, viagens e festas.',
+              icon: Users
+            },
+            {
+              title: 'Aba "Em Alta" Exclusiva',
+              desc: 'Veja as publicações com mais curtidas e comentários de toda a rede, só para membros VIP.',
+              icon: TrendingUp
+            },
+            {
+              title: 'Recomendações de Perfis Personalizadas',
+              desc: 'Suas preferências de idade, sexo e localização priorizam o que aparece no seu feed.',
+              icon: Target
+            },
+            {
+              title: 'Selo Dourado de Destaque no Feed',
+              desc: 'Ganhe destaque oficial VIP em suas publicações e no chat.',
+              icon: Crown
+            }
+          ].map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <div key={idx} className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mt-0.5 flex-shrink-0">
+                  <Icon className="w-4 h-4" />
                 </div>
-                <p className="text-[10px] text-center text-[var(--c-text-faint)]">
-                  🔒 Pagamento seguro via Mercado Pago. Renovação manual — sem cobrança recorrente automática.
-                </p>
+                <div>
+                  <h4 className="text-xs font-bold text-[var(--c-text)] flex items-center gap-1">
+                    {item.title} <CheckCircle className="w-3 h-3 text-emerald-400" />
+                  </h4>
+                  <p className="text-[10px] text-[var(--c-text-muted)]">{item.desc}</p>
+                </div>
               </div>
-            ) : (
-              <button
-                onClick={resetAndClose}
-                className="w-full py-3 bg-[var(--c-overlay-10)] hover:bg-[var(--c-overlay-20)] text-[var(--c-text)] font-bold text-xs rounded-xl transition"
-              >
-                Fechar
-              </button>
+            );
+          })}
+        </div>
+
+        {/* Official Purchase Action */}
+        {!isPro ? (
+          <div className="space-y-2">
+            {errorMsg && (
+              <p className="text-[11px] text-center text-red-400 font-medium">{errorMsg}</p>
             )}
-          </>
+            <button
+              onClick={handleSubscribe}
+              disabled={isProcessing}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black font-black text-xs rounded-xl shadow-xl shadow-amber-500/30 transition transform hover:scale-102 active:scale-98 flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+              <span>{isProcessing ? 'Abrindo pagamento...' : 'Assinar Plano VIP (R$ 24,90)'}</span>
+            </button>
+            <p className="text-[10px] text-center text-[var(--c-text-faint)]">
+              🔒 Pagamento seguro via Stripe (cartão, boleto ou Pix). Renovação manual — sem cobrança recorrente automática.
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={resetAndClose}
+            className="w-full py-3 bg-[var(--c-overlay-10)] hover:bg-[var(--c-overlay-20)] text-[var(--c-text)] font-bold text-xs rounded-xl transition"
+          >
+            Fechar
+          </button>
         )}
       </div>
     </div>
+
+    {showCancelConfirm && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+        <div className="relative w-full max-w-sm bg-[var(--c-surface)] border border-red-500/40 rounded-3xl shadow-2xl shadow-red-950/40 p-6 space-y-4">
+          <h3 className="text-sm font-bold text-[var(--c-text)] flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-red-400" /> Cancelar assinatura VIP?
+          </h3>
+          <p className="text-xs text-[var(--c-text-secondary)] leading-relaxed">
+            Ao confirmar, você perde imediatamente o acesso a todos os benefícios VIP: chat direto, fotos no chat privado, salas de grupo exclusivas, aba "Em Alta", recomendações personalizadas e o selo dourado. Você recebe o reembolso integral do valor pago, já que ainda está dentro do prazo de 7 dias.
+          </p>
+          {cancelMsg && <p className="text-xs text-red-400 font-medium">{cancelMsg}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowCancelConfirm(false)}
+              disabled={isCancelling}
+              className="flex-1 py-2.5 bg-[var(--c-overlay-10)] hover:bg-[var(--c-overlay-20)] text-[var(--c-text)] font-bold text-xs rounded-xl transition disabled:opacity-60"
+            >
+              Manter assinatura
+            </button>
+            <button
+              onClick={handleCancelSubscription}
+              disabled={isCancelling}
+              className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition disabled:opacity-60 flex items-center justify-center gap-1.5"
+            >
+              {isCancelling && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isCancelling ? 'Cancelando...' : 'Confirmar cancelamento'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };

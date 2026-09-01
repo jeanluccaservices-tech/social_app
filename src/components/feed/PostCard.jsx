@@ -8,11 +8,17 @@ import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { useToast } from '../../context/ToastContext';
 import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag, X, Users } from 'lucide-react';
 
-export const PostCard = ({ post, onOpenChatWithUser, onSelectUser }) => {
+export const PostCard = ({ post, onOpenChatWithUser, onSelectUser, autoOpenComments = false }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
   const { toggleLikePost, addComment, deletePost, deleteComment, reportPost, getFriendshipStatus, sendFriendRequest } = useSocial();
   const { showToast } = useToast();
   const [showComments, setShowComments] = useState(false);
+
+  // Coming from a "commented on your post" notification — land with the
+  // comment thread already open instead of making the person click again.
+  useEffect(() => {
+    if (autoOpenComments) setShowComments(true);
+  }, [autoOpenComments]);
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [commentInput, setCommentInput] = useState('');
   const [confirmDeleteCommentId, setConfirmDeleteCommentId] = useState(null);
