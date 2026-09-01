@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocialProvider, useSocial } from './context/SocialContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -16,16 +16,26 @@ import { AuthModal } from './components/auth/AuthModal';
 import { ProModal } from './components/auth/ProModal';
 import { AgeGate, isAgeVerified } from './components/auth/AgeGate';
 import { ScreenshotGuard } from './components/common/ScreenshotGuard';
-import { Rss, MessageCircle, Users, User, Flame, Heart, TrendingUp } from 'lucide-react';
+import { AdminPanel } from './components/admin/AdminPanel';
+import { usePullToRefresh } from './lib/usePullToRefresh';
+import { Rss, MessageCircle, Users, User, Flame, Heart, TrendingUp, Loader2, ShieldCheck } from 'lucide-react';
 
 const MainContent = () => {
-  const { currentUser, authLoading } = useAuth();
-  const { unreadMessageCount, refreshPostComments } = useSocial();
+  const { currentUser, authLoading, isAdmin } = useAuth();
+  const { unreadMessageCount, refreshPostComments, fetchPosts } = useSocial();
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'groups' | 'chat' | 'friends' | 'profile'
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [highlightPostId, setHighlightPostId] = useState(null);
   const [highlightType, setHighlightType] = useState(null);
+
+  // Pull-to-refresh only means something on the feed tab — on any other
+  // tab the gesture is a no-op.
+  const mainRef = useRef(null);
+  const { pullDistance, refreshing, handlers: pullHandlers } = usePullToRefresh(
+    mainRef,
+    async () => { if (activeTab === 'feed') await fetchPosts(); }
+  );
 
   const handleOpenChatWithUser = (targetUser) => {
     setSelectedChatUser(targetUser);
@@ -104,7 +114,20 @@ const MainContent = () => {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 p-3 sm:p-4 md:p-6 pb-24 md:pb-8 overflow-y-auto">
+        <main
+          ref={mainRef}
+          className="flex-1 p-3 sm:p-4 md:p-6 pb-24 md:pb-8 overflow-y-auto"
+          style={{ touchAction: 'pan-y' }}
+          {...(activeTab === 'feed' ? pullHandlers : {})}
+        >
+          {activeTab === 'feed' && (pullDistance > 0 || refreshing) && (
+            <div
+              style={{ height: refreshing ? 40 : pullDistance }}
+              className="flex items-center justify-center overflow-hidden transition-[height]"
+            >
+              <Loader2 className={`w-5 h-5 text-rose-400 ${refreshing ? 'animate-spin' : ''}`} />
+            </div>
+          )}
           {activeTab === 'feed' && (
             <Feed
               onOpenChatWithUser={handleOpenChatWithUser}
@@ -147,6 +170,8 @@ const MainContent = () => {
               onSelectUser={handleSelectUser}
             />
           )}
+
+          {activeTab === 'admin' && isAdmin && <AdminPanel />}
         </main>
       </div>
 
@@ -158,7 +183,8 @@ const MainContent = () => {
           { id: 'groups', label: 'Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black' },
           { id: 'chat', label: 'Chat', icon: MessageCircle, badge: unreadMessageCount > 0 ? (unreadMessageCount > 9 ? '9+' : unreadMessageCount) : null, badgeColor: 'bg-rose-600 text-white' },
           { id: 'friends', label: 'Amigos', icon: Users },
-          { id: 'profile', label: 'Perfil', icon: User }
+          { id: 'profile', label: 'Perfil', icon: User },
+          ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: ShieldCheck }] : [])
         ].map(item => {
           const isActive = item.id === 'profile' ? isOwnProfileActive : activeTab === item.id;
           const Icon = item.icon;

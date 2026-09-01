@@ -6,6 +6,7 @@ import { GENDERS, MIN_AGE, MAX_AGE, sanitizeAgeInput, clampAge, MIN_BIRTH_DATE, 
 import { CitySelect } from '../common/CitySelect';
 import { SupportButton } from '../common/SupportButton';
 import { TermsModal } from '../common/TermsModal';
+import { useBackButtonClose } from '../../lib/useBackButtonClose';
 
 // A resend costs Resend/GoTrue quota and can be used to spam an inbox, so
 // it's throttled: a 3-minute wait between sends, and at most 3 codes total
@@ -19,6 +20,8 @@ export const AuthModal = () => {
     isAuthModalOpen, setIsAuthModalOpen, login, register, verifySignup, resendVerification,
     requestPasswordReset, confirmPasswordReset
   } = useAuth();
+  useBackButtonClose(isAuthModalOpen, () => setIsAuthModalOpen(false));
+
   const [mode, setMode] = useState('login'); // 'login' | 'register' | 'verify' | 'forgot' | 'reset-verify'
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');

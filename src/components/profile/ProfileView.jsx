@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { PostCard } from '../feed/PostCard';
@@ -29,13 +29,21 @@ const KVRow = ({ label, value }) => (
 
 export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, setIsProModalOpen } = useAuth();
-  const { posts, getFriendshipStatus, sendFriendRequest, rejectFriendRequest, isBlocked, blockUser, unblockUser } = useSocial();
+  const { posts, getFriendshipStatus, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, isBlocked, blockUser, unblockUser, getFriendCount } = useSocial();
   const { showToast } = useToast();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('posts'); // 'about' | 'posts' | 'media'
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [friendCount, setFriendCount] = useState(null);
 
   const profileUser = user || currentUser;
+
+  useEffect(() => {
+    if (!profileUser?.id) return;
+    let active = true;
+    getFriendCount(profileUser.id).then((count) => { if (active) setFriendCount(count); });
+    return () => { active = false; };
+  }, [profileUser?.id, getFriendCount]);
 
   if (!profileUser) {
     return (
@@ -57,6 +65,11 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
   const handleCancelRequest = async () => {
     const res = await rejectFriendRequest(profileUser.id);
     showToast(res.success ? 'Convite cancelado.' : res.message, res.success ? 'success' : 'error');
+  };
+
+  const handleAcceptRequest = async () => {
+    const res = await acceptFriendRequest(profileUser.id);
+    showToast(res.success ? 'Vocês agora são amigos!' : res.message, res.success ? 'success' : 'error');
   };
 
   const handleToggleBlock = () => {
@@ -102,6 +115,9 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
                 isCouple={profileUser.isCouple}
                 className="w-24 h-24 rounded-3xl object-cover ring-4 ring-[var(--c-surface)] shadow-xl"
               />
+              {profileUser.isOnline && (
+                <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-[var(--c-surface)]" title="Online agora" />
+              )}
               {profileUser.isCouple && (
                 <span className="absolute -bottom-2 -right-2 bg-gradient-to-r from-rose-600 to-pink-600 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-lg border border-black flex items-center gap-1">
                   ❤️ CASAL
@@ -157,6 +173,23 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
                       <UserX className="w-3.5 h-3.5" /> Cancelar Convite
                     </button>
                   )}
+                  {friendStatus === 'RECEIVED' && (
+                    <>
+                      <button
+                        onClick={handleAcceptRequest}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" /> Aceitar Convite
+                      </button>
+                      <button
+                        onClick={handleCancelRequest}
+                        title="Recusar convite"
+                        className="px-3 py-2 bg-[var(--c-overlay-5)] hover:bg-red-500/10 text-[var(--c-text-muted)] hover:text-red-400 text-xs font-semibold rounded-xl border border-[var(--c-border)] hover:border-red-500/30 transition flex items-center gap-1"
+                      >
+                        <UserX className="w-3.5 h-3.5" /> Recusar
+                      </button>
+                    </>
+                  )}
 
                   <button
                     onClick={handleToggleBlock}
@@ -199,6 +232,9 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-purple-400" /> No LoveVibe desde {profileUser.joinedDate || '2025'}
               </span>
+              <span className="flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 text-emerald-400" /> {friendCount ?? '—'} amigos
+              </span>
             </div>
           </div>
 
@@ -216,33 +252,19 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Partner 1 */}
-                <div className="p-3 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl flex items-center gap-3">
-                  <Avatar
-                    src={profileUser.partner1?.avatar || profileUser.avatar}
-                    alt={profileUser.partner1?.name || 'Parceiro 1'}
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500/50"
-                  />
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--c-text)]">{profileUser.partner1?.name || 'Parceiro 1'}</h4>
-                    <p className="text-[10px] text-[var(--c-accent)] font-medium">
-                      Sexo: <span className="text-[var(--c-text)] font-semibold">{profileUser.partner1?.gender || 'Masculino'}</span> • {profileUser.partner1?.age || '28'} anos
-                    </p>
-                  </div>
+                <div className="p-3 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl">
+                  <h4 className="text-xs font-bold text-[var(--c-text)]">{profileUser.partner1?.name || 'Parceiro 1'}</h4>
+                  <p className="text-[10px] text-[var(--c-accent)] font-medium">
+                    Sexo: <span className="text-[var(--c-text)] font-semibold">{profileUser.partner1?.gender || 'Masculino'}</span> • {profileUser.partner1?.age || '28'} anos
+                  </p>
                 </div>
 
                 {/* Partner 2 */}
-                <div className="p-3 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl flex items-center gap-3">
-                  <Avatar
-                    src={profileUser.partner2?.avatar || profileUser.avatar}
-                    alt={profileUser.partner2?.name || 'Parceiro 2'}
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-pink-500/50"
-                  />
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--c-text)]">{profileUser.partner2?.name || 'Parceiro 2'}</h4>
-                    <p className="text-[10px] text-pink-300 font-medium">
-                      Sexo: <span className="text-[var(--c-text)] font-semibold">{profileUser.partner2?.gender || 'Feminino'}</span> • {profileUser.partner2?.age || '26'} anos
-                    </p>
-                  </div>
+                <div className="p-3 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-xl">
+                  <h4 className="text-xs font-bold text-[var(--c-text)]">{profileUser.partner2?.name || 'Parceiro 2'}</h4>
+                  <p className="text-[10px] text-pink-300 font-medium">
+                    Sexo: <span className="text-[var(--c-text)] font-semibold">{profileUser.partner2?.gender || 'Feminino'}</span> • {profileUser.partner2?.age || '26'} anos
+                  </p>
                 </div>
               </div>
             </div>

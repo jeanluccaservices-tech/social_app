@@ -9,6 +9,9 @@
 // `${userId}/...` folder into `deleted/${userId}/...` fails the regular
 // "manage your own media folder" storage policies, which only allow
 // writes whose first path segment is the caller's own uid.
+//
+// Admins (is_admin(), checked server-side) may delete anyone's post, not
+// just their own — used from the Admin panel to act on reported content.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { checkRateLimit, clientIdentity } from '../_shared/rateLimit.ts';
 
@@ -68,16 +71,20 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'post_id é obrigatório.' }, 400);
   }
 
-  // Ownership + "not already deleted" check happens server-side here,
-  // same guarantee the old SECURITY DEFINER RPC gave.
-  const { data: post, error: updateError } = await supabaseAdmin
+  const { data: isAdmin } = await authedClient.rpc('is_admin');
+
+  // Ownership + "not already deleted" check happens server-side here, same
+  // guarantee the old SECURITY DEFINER RPC gave — unless the caller is an
+  // admin, who may delete any post.
+  let deleteQuery = supabaseAdmin
     .from('posts')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', postId)
-    .eq('user_id', user.id)
-    .is('deleted_at', null)
-    .select('media_url')
-    .maybeSingle();
+    .is('deleted_at', null);
+  if (!isAdmin) {
+    deleteQuery = deleteQuery.eq('user_id', user.id);
+  }
+  const { data: post, error: updateError } = await deleteQuery.select('media_url').maybeSingle();
 
   if (updateError) {
     console.error(updateError);

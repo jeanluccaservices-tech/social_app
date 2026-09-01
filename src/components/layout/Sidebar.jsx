@@ -3,10 +3,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useSocial } from '../../context/SocialContext';
 import { Avatar } from '../common/Avatar';
 import { formatFullDateTime } from '../../utils/time';
-import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame, TrendingUp } from 'lucide-react';
+import { Rss, MessageCircle, Users, User, Sparkles, Heart, Flame, TrendingUp, ShieldCheck } from 'lucide-react';
 
 export const Sidebar = ({ activeTab, setActiveTab, isOwnProfileActive, onOpenOwnProfile }) => {
-  const { currentUser, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
+  const { currentUser, setIsAuthModalOpen, setIsProModalOpen, isAdmin } = useAuth();
   const { friendships, unreadMessageCount } = useSocial();
 
   // Calculate pending friend requests count
@@ -20,7 +20,8 @@ export const Sidebar = ({ activeTab, setActiveTab, isOwnProfileActive, onOpenOwn
     { id: 'groups', label: 'Salas de Grupos', icon: Flame, badge: 'VIP', badgeColor: 'bg-amber-500 text-black font-black' },
     { id: 'chat', label: 'Chat Direto', icon: MessageCircle, badge: unreadMessageCount > 0 ? unreadMessageCount : null, badgeColor: 'bg-rose-600 text-white' },
     { id: 'friends', label: 'Amigos & Convites', icon: Users, badge: pendingRequestsCount > 0 ? pendingRequestsCount : null, badgeColor: 'bg-rose-600 text-white' },
-    { id: 'profile', label: 'Meu Perfil', icon: User, badge: null }
+    { id: 'profile', label: 'Meu Perfil', icon: User, badge: null },
+    ...(isAdmin ? [{ id: 'admin', label: 'Painel Admin', icon: ShieldCheck, badge: null }] : [])
   ];
 
   return (

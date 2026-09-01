@@ -56,10 +56,16 @@ const FEATURES = [
 // gets this sales pitch instead of a peek at the feed. Clicking through
 // is what opens AuthModal; it no longer opens itself automatically.
 export const LoginGate = () => {
-  const { setIsAuthModalOpen, setIsProModalOpen } = useAuth();
+  const { setIsAuthModalOpen, banNotice, clearBanNotice } = useAuth();
 
   return (
     <div className="relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-10 sm:py-16">
+      {banNotice && (
+        <div className="relative z-10 w-full max-w-lg mt-2 p-3.5 bg-red-950/60 border border-red-500/40 rounded-2xl text-center flex items-center justify-between gap-3">
+          <p className="text-xs text-red-300 font-medium">{banNotice}</p>
+          <button onClick={clearBanNotice} className="text-red-300 hover:text-red-200 text-xs font-bold flex-shrink-0">✕</button>
+        </div>
+      )}
       {/* Hero backdrop: breathing color blobs + embers drifting up past the
           pitch. Isolated to this screen so it doesn't bleed into the app. */}
       <div aria-hidden="true" className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
@@ -122,12 +128,6 @@ export const LoginGate = () => {
             className="px-7 py-3.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-sm rounded-2xl shadow-lg shadow-rose-600/30 transition transform hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-2"
           >
             <LogIn className="w-4 h-4" /> Entrar / Cadastrar
-          </button>
-          <button
-            onClick={() => setIsProModalOpen(true)}
-            className="px-6 py-3 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] border border-amber-500/40 text-[var(--c-pro-text)] font-bold text-xs rounded-2xl transition flex items-center gap-2"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" /> Conheça o plano VIP
           </button>
         </div>
 

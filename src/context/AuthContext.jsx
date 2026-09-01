@@ -26,6 +26,11 @@ const mapProfile = (row) => {
     // within its 1-month window", so it can't go stale.
     isPro: !!row.pro_expires_at && new Date(row.pro_expires_at) > new Date(),
     proExpiresAt: row.pro_expires_at || null,
+    bannedUntil: row.banned_until || null,
+    // "Online" is derived from a heartbeat timestamp (see the interval
+    // below) rather than a real presence system — a couple of minutes of
+    // slack covers the polling/heartbeat intervals without flickering.
+    isOnline: !!row.last_seen_at && (Date.now() - new Date(row.last_seen_at).getTime()) < 2 * 60 * 1000,
     avatar: row.avatar_url || '',
     cover: row.cover_url || '',
     bio: row.bio || '',
@@ -39,6 +44,7 @@ const mapProfile = (row) => {
     partner1,
     partner2,
     joinedDate: formatJoinedDate(row.created_at),
+    createdAtRaw: row.created_at,
     about: {
       heightCm: row.height_cm ?? null,
       weightKg: row.weight_kg ?? null,
@@ -73,6 +79,8 @@ export const AuthProvider = ({ children }) => {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isProModalOpen, setIsProModalOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [banNotice, setBanNotice] = useState('');
 
   const fetchUsers = useCallback(async () => {
     const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
@@ -82,10 +90,27 @@ export const AuthProvider = ({ children }) => {
   const fetchCurrentProfile = useCallback(async (userId) => {
     if (!userId) {
       setCurrentUser(null);
+      setIsAdmin(false);
       return;
     }
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+
+    // The real ban enforcement is server-side (Supabase Auth rejects
+    // login/refresh for a banned account, see admin-ban-user) — this just
+    // closes the gap for a session whose access token is still technically
+    // valid, signing them out as soon as the app notices instead of
+    // waiting for that token to expire on its own.
+    if (data?.banned_until && new Date(data.banned_until) > new Date()) {
+      setCurrentUser(null);
+      setIsAdmin(false);
+      setBanNotice('Sua conta foi suspensa. Se achar que isso é um engano, entre em contato com o suporte.');
+      await supabase.auth.signOut();
+      return;
+    }
+
     setCurrentUser(mapProfile(data));
+    const { data: adminData } = await supabase.rpc('is_admin');
+    setIsAdmin(!!adminData);
   }, []);
 
   // Re-reads the logged-in user's own row — used after an action whose
@@ -129,6 +154,28 @@ export const AuthProvider = ({ children }) => {
       listener.subscription.unsubscribe();
     };
   }, [fetchUsers, fetchCurrentProfile]);
+
+  // Heartbeat for online/offline status — updates the logged-in user's own
+  // last_seen_at every minute while the app is open. No presence system:
+  // just a timestamp other clients compare against a 2-minute window (see
+  // mapProfile above).
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    const beat = () => supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', userId);
+    beat();
+    const interval = setInterval(beat, 60000);
+    return () => clearInterval(interval);
+  }, [session?.user?.id]);
+
+  // Light polling so other users' last_seen_at (and everything else about
+  // them) refreshes periodically — same pattern SocialContext already uses
+  // for contacts/notifications instead of a realtime subscription.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(fetchUsers, 60000);
+    return () => clearInterval(interval);
+  }, [session, fetchUsers]);
 
   const login = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -378,7 +425,10 @@ export const AuthProvider = ({ children }) => {
       isAuthModalOpen,
       setIsAuthModalOpen,
       isProModalOpen,
-      setIsProModalOpen
+      setIsProModalOpen,
+      isAdmin,
+      banNotice,
+      clearBanNotice: () => setBanNotice('')
     }}>
       {children}
     </AuthContext.Provider>

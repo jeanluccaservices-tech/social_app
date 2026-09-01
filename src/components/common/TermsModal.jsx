@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, ScrollText } from 'lucide-react';
+import { useBackButtonClose } from '../../lib/useBackButtonClose';
 
 const SECTIONS = [
   {
@@ -89,6 +90,8 @@ const SECTIONS = [
 ];
 
 export const TermsModal = ({ isOpen, onClose }) => {
+  useBackButtonClose(isOpen, onClose);
+
   if (!isOpen) return null;
 
   return (

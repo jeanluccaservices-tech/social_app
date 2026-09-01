@@ -197,6 +197,14 @@ export const SocialProvider = ({ children }) => {
   })), [rawPosts, currentUser]);
 
   // --- FRIENDSHIP HELPERS ---
+  // `friendships` above only ever holds rows involving the logged-in user
+  // (that's all the RLS policy on the table allows a client to SELECT), so
+  // counting a third party's friends needs a dedicated RPC instead.
+  const getFriendCount = useCallback(async (userId) => {
+    const { data } = await supabase.rpc('friend_count', { target_user_id: userId });
+    return data ?? 0;
+  }, []);
+
   const areFriends = (userIdA, userIdB) => {
     if (!userIdA || !userIdB) return false;
     return friendships.some(f =>
@@ -483,10 +491,12 @@ export const SocialProvider = ({ children }) => {
     <SocialContext.Provider value={{
       posts,
       postsLoading,
+      fetchPosts,
       refreshPostComments,
       friendships,
       messages,
       contactsLoading,
+      fetchContacts,
       unreadMessageCount,
       markMessagesRead,
       notifications,
@@ -496,6 +506,7 @@ export const SocialProvider = ({ children }) => {
       markAllNotificationsRead,
       areFriends,
       getFriendshipStatus,
+      getFriendCount,
       sendFriendRequest,
       acceptFriendRequest,
       rejectFriendRequest,
