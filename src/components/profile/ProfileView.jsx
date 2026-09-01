@@ -194,7 +194,7 @@ export const ProfileView = ({ user, onOpenChatWithUser, onSelectUser }) => {
 
             <div className="flex flex-wrap items-center gap-4 mt-3 text-xs text-[var(--c-text-muted)] font-medium">
               <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-rose-400" /> {profileUser.location || 'Brasil'}
+                <MapPin className="w-3.5 h-3.5 text-rose-400" /> {profileUser.location || 'Não informado'}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-purple-400" /> No LoveVibe desde {profileUser.joinedDate || '2025'}

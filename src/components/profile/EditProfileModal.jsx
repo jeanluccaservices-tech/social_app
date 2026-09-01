@@ -39,9 +39,9 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
   const [location, setLocation] = useState(user?.location || '');
 
   const [p1Name, setP1Name] = useState(user?.partner1?.name || '');
-  const [p1Age, setP1Age] = useState(user?.partner1?.age || '');
+  const [p1BirthDate, setP1BirthDate] = useState(user?.partner1?.birthDate || '');
   const [p2Name, setP2Name] = useState(user?.partner2?.name || '');
-  const [p2Age, setP2Age] = useState(user?.partner2?.age || '');
+  const [p2BirthDate, setP2BirthDate] = useState(user?.partner2?.birthDate || '');
 
   const [prefAgeMin, setPrefAgeMin] = useState(user?.preferences?.ageMin ?? 18);
   const [prefAgeMax, setPrefAgeMax] = useState(user?.preferences?.ageMax ?? 99);
@@ -105,10 +105,13 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
 
     if (user.isCouple) {
       updates.name = `${p1Name} & ${p2Name}`;
-      // Gender is fixed at signup — spread the existing partner object
-      // first so its gender always wins over anything else here.
-      updates.partner1 = { ...user.partner1, name: p1Name, age: p1Age };
-      updates.partner2 = { ...user.partner2, name: p2Name, age: p2Age };
+      // Gender is fixed at signup — updateProfile() re-asserts it from
+      // currentUser regardless of what's sent here, so it's left out
+      // entirely rather than carrying forward the derived `age` that
+      // user.partner1/2 also holds (that's recomputed from birthDate on
+      // every load, so storing it back would just be stale dead weight).
+      updates.partner1 = { name: p1Name, birthDate: p1BirthDate };
+      updates.partner2 = { name: p2Name, birthDate: p2BirthDate };
     } else {
       updates.name = name;
       updates.birthDate = birthDate;
@@ -211,17 +214,18 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
               <span className="text-rose-400 font-bold text-xs flex items-center gap-1.5">
                 <Users className="w-4 h-4" /> Integrantes do Casal:
               </span>
+              <p className="text-[10px] text-[var(--c-text-faint)] -mt-2">
+                Pode usar o nome ou um apelido de cada integrante. A data de nascimento é usada para calcular a idade automaticamente.
+              </p>
 
               <div className="bg-[var(--c-surface-3)] p-3 rounded-xl border border-[var(--c-border)] space-y-2">
                 <span className="text-[11px] font-bold text-[var(--c-accent)]">Integrante 1:</span>
                 <div className="grid grid-cols-3 gap-2">
-                  <input type="text" value={p1Name} onChange={e => setP1Name(stripEmojis(e.target.value))} placeholder="Nome"
+                  <input type="text" value={p1Name} onChange={e => setP1Name(stripEmojis(e.target.value))} placeholder="Nome ou apelido"
                     className="col-span-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500" />
-                  <input type="number" inputMode="numeric" min={MIN_AGE} max={MAX_AGE} value={p1Age}
-                    onChange={e => setP1Age(sanitizeAgeInput(e.target.value))}
-                    onBlur={e => setP1Age(clampAge(e.target.value))}
-                    placeholder="Idade"
-                    className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500" />
+                  <input type="date" min={MIN_BIRTH_DATE} max={MAX_BIRTH_DATE} value={p1BirthDate}
+                    onChange={e => setP1BirthDate(e.target.value)}
+                    className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-[11px] text-[var(--c-text)] focus:outline-none focus:border-rose-500" />
                   <div
                     title="O sexo não pode ser alterado após o cadastro"
                     className="flex items-center justify-center gap-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text-muted)]"
@@ -234,13 +238,11 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
               <div className="bg-[var(--c-surface-3)] p-3 rounded-xl border border-[var(--c-border)] space-y-2">
                 <span className="text-[11px] font-bold text-[var(--c-accent)]">Integrante 2:</span>
                 <div className="grid grid-cols-3 gap-2">
-                  <input type="text" value={p2Name} onChange={e => setP2Name(stripEmojis(e.target.value))} placeholder="Nome"
+                  <input type="text" value={p2Name} onChange={e => setP2Name(stripEmojis(e.target.value))} placeholder="Nome ou apelido"
                     className="col-span-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500" />
-                  <input type="number" inputMode="numeric" min={MIN_AGE} max={MAX_AGE} value={p2Age}
-                    onChange={e => setP2Age(sanitizeAgeInput(e.target.value))}
-                    onBlur={e => setP2Age(clampAge(e.target.value))}
-                    placeholder="Idade"
-                    className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500" />
+                  <input type="date" min={MIN_BIRTH_DATE} max={MAX_BIRTH_DATE} value={p2BirthDate}
+                    onChange={e => setP2BirthDate(e.target.value)}
+                    className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-[11px] text-[var(--c-text)] focus:outline-none focus:border-rose-500" />
                   <div
                     title="O sexo não pode ser alterado após o cadastro"
                     className="flex items-center justify-center gap-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text-muted)]"
@@ -258,9 +260,10 @@ export const EditProfileModal = ({ isOpen, onClose, user }) => {
                   className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2 px-3 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1 flex items-center gap-1">
+                <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-0.5 flex items-center gap-1">
                   <Cake className="w-3.5 h-3.5 text-rose-400" /> Nascimento
                 </label>
+                <p className="text-[10px] text-[var(--c-text-faint)] mb-1">Usada para calcular sua idade automaticamente.</p>
                 <input type="date" min={MIN_BIRTH_DATE} max={MAX_BIRTH_DATE} value={birthDate}
                   onChange={(e) => setBirthDate(e.target.value)}
                   className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2 px-3 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500" />

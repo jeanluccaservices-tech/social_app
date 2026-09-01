@@ -471,7 +471,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                           {u.isPro && <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400" title="Membro VIP" />}
                         </h4>
                         <p className="text-[10px] text-[var(--c-accent)] flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3" /> {u.isCouple ? 'Casal' : u.gender} • {u.location || 'Brasil'}
+                          <MapPin className="w-3 h-3" /> {u.isCouple ? 'Casal' : u.gender} • {u.location || 'Não informado'}
                         </p>
                         {u.bio && (
                           <p className="text-[11px] text-[var(--c-text-muted)] mt-1.5 line-clamp-2">{u.bio}</p>

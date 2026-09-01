@@ -20,7 +20,7 @@ import { Rss, MessageCircle, Users, User, Flame, Heart, TrendingUp } from 'lucid
 
 const MainContent = () => {
   const { currentUser, authLoading } = useAuth();
-  const { unreadMessageCount } = useSocial();
+  const { unreadMessageCount, refreshPostComments } = useSocial();
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'groups' | 'chat' | 'friends' | 'profile'
   const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
   const [selectedChatUser, setSelectedChatUser] = useState(null);
@@ -35,6 +35,11 @@ const MainContent = () => {
   // From a "liked/commented on your post" notification — go straight to
   // the post itself instead of just the profile.
   const handleOpenPost = (postId, type) => {
+    // The post's comments were fetched once when the feed first loaded and
+    // never refreshed since — without this, opening a "commented on your
+    // post" notification would land on the post still missing the very
+    // comment that triggered it.
+    if (type === 'post_comment') refreshPostComments(postId);
     setHighlightPostId(postId);
     setHighlightType(type);
     setActiveTab('feed');

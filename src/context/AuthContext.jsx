@@ -5,15 +5,21 @@ import { calculateAge } from '../lib/constants';
 
 const AuthContext = createContext();
 
+// Partner age is never stored directly — like the single-profile age, it's
+// derived from a stored birth date so it can't go stale.
+const mapPartner = (p) => (p ? { ...p, age: calculateAge(p.birthDate) } : null);
+
 const mapProfile = (row) => {
   if (!row) return null;
+  const partner1 = mapPartner(row.partner1);
+  const partner2 = mapPartner(row.partner2);
   return {
     id: row.id,
     username: row.username,
     name: row.name,
     phone: row.phone || '',
     birthDate: row.birth_date || '',
-    age: row.is_couple ? `${row.partner1?.age ?? '?'} & ${row.partner2?.age ?? '?'}` : calculateAge(row.birth_date),
+    age: row.is_couple ? `${partner1?.age ?? '?'} & ${partner2?.age ?? '?'}` : calculateAge(row.birth_date),
     gender: row.gender,
     isCouple: row.is_couple,
     // PRO is never a stored flag — it's always "is the paid access still
@@ -30,8 +36,8 @@ const mapProfile = (row) => {
       genders: row.pref_genders || [],
       radiusKm: row.pref_radius_km ?? 50
     },
-    partner1: row.partner1 || null,
-    partner2: row.partner2 || null,
+    partner1,
+    partner2,
     joinedDate: formatJoinedDate(row.created_at),
     about: {
       heightCm: row.height_cm ?? null,
@@ -136,12 +142,20 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: 'É necessário confirmar que você é maior de 18 anos e concordar com os Termos de Uso.' };
     }
 
+    // Strip any leading "@" the user typed — the app always prefixes the
+    // stored username with "@" when displaying it, so a stored "@" would
+    // show up doubled ("@@username") everywhere. Any other "@" (not at the
+    // start) becomes "_" instead, same as spaces. Also normalize to
+    // lowercase so usernames stay consistent and URL/mention-safe
+    // regardless of what the user typed.
+    const username = data.username.trim().replace(/^@+/, '').replace(/@/g, '_').replace(/\s+/g, '_').toLowerCase();
+
     const isCouple = data.gender === 'Casal';
 
     if (isCouple) {
-      const p1Age = Number(data.partner1?.age);
-      const p2Age = Number(data.partner2?.age);
-      if (!p1Age || p1Age < 18 || p1Age > 100 || !p2Age || p2Age < 18 || p2Age > 100) {
+      const p1Age = calculateAge(data.partner1?.birthDate);
+      const p2Age = calculateAge(data.partner2?.birthDate);
+      if (p1Age === null || p1Age < 18 || p1Age > 100 || p2Age === null || p2Age < 18 || p2Age > 100) {
         return { success: false, message: 'Ambos os integrantes do casal precisam ter entre 18 e 100 anos.' };
       }
     } else {
@@ -154,13 +168,13 @@ export const AuthProvider = ({ children }) => {
     // profiles is only readable while logged in (0006), so this can't be a
     // direct SELECT — a person registering has no session yet. RPC exposes
     // just a yes/no instead.
-    const { data: usernameTaken } = await supabase.rpc('is_username_taken', { check_username: data.username });
+    const { data: usernameTaken } = await supabase.rpc('is_username_taken', { check_username: username });
     if (usernameTaken) {
       return { success: false, message: 'Nome de usuário já está em uso.' };
     }
 
     const metadata = {
-      username: data.username,
+      username,
       name: isCouple ? `${data.partner1?.name} & ${data.partner2?.name}` : data.name,
       phone: data.phone || '',
       birth_date: isCouple ? null : data.birthDate || null,
