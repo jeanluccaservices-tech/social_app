@@ -25,7 +25,11 @@ const mapPost = (p) => ({
   comments: (p.comments || [])
     .slice()
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    .map(mapComment)
+    .map(mapComment),
+  pollOptions: (p.poll_options || [])
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map(o => ({ id: o.id, text: o.option_text }))
 });
 
 export const SocialProvider = ({ children }) => {
@@ -55,7 +59,8 @@ export const SocialProvider = ({ children }) => {
       .select(`
         id, user_id, type, content, media_url, created_at,
         post_likes ( user_id ),
-        comments ( id, user_id, text, created_at, profiles ( name, avatar_url ) )
+        comments ( id, user_id, text, created_at, profiles ( name, avatar_url ) ),
+        poll_options ( id, option_text, position )
       `)
       .order('created_at', { ascending: false });
     setRawPosts((data || []).map(mapPost));
@@ -391,10 +396,71 @@ export const SocialProvider = ({ children }) => {
 
     setRawPosts(prev => [{
       id: data.id, userId: data.user_id, type: data.type, content: data.content,
-      mediaUrl: data.media_url, createdAtRaw: data.created_at, likes: [], comments: []
+      mediaUrl: data.media_url, createdAtRaw: data.created_at, likes: [], comments: [], pollOptions: []
     }, ...prev]);
     return { success: true };
   };
+
+  // A poll is a post (type: 'poll', content is the question) plus its
+  // options in a separate table — two inserts, not one, so failure
+  // between them can leave a question-only post with no options; rare
+  // enough (an insert failing right after the one before it succeeded)
+  // not to build extra rollback machinery for.
+  const createPoll = async (question, optionTexts, mediaUrl) => {
+    if (!currentUser) return { success: false, message: 'Faça login para publicar.' };
+    const cleanOptions = optionTexts.map(o => o.trim()).filter(Boolean);
+    if (!question.trim()) return { success: false, message: 'Escreva a pergunta da enquete.' };
+    if (cleanOptions.length < 2) return { success: false, message: 'Inclua pelo menos 2 opções.' };
+
+    const { data: post, error: postError } = await supabase
+      .from('posts')
+      .insert({ user_id: currentUser.id, type: 'poll', content: question.trim(), media_url: mediaUrl || null })
+      .select()
+      .single();
+    if (postError) return { success: false, message: 'Não foi possível publicar a enquete.' };
+
+    const { data: optionRows, error: optionsError } = await supabase
+      .from('poll_options')
+      .insert(cleanOptions.map((option_text, position) => ({ post_id: post.id, option_text, position })))
+      .select();
+    if (optionsError) return { success: false, message: 'Não foi possível salvar as opções da enquete.' };
+
+    setRawPosts(prev => [{
+      id: post.id, userId: post.user_id, type: post.type, content: post.content,
+      mediaUrl: post.media_url, createdAtRaw: post.created_at, likes: [], comments: [],
+      pollOptions: optionRows
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map(o => ({ id: o.id, text: o.option_text }))
+    }, ...prev]);
+    return { success: true };
+  };
+
+  // Single vote per person per poll (unique index on poll_votes), so
+  // voting again just changes the existing row instead of adding one.
+  const castVote = async (postId, optionId) => {
+    if (!currentUser) return { success: false, message: 'Faça login para votar.' };
+    const { error } = await supabase
+      .from('poll_votes')
+      .upsert({ post_id: postId, option_id: optionId, user_id: currentUser.id }, { onConflict: 'post_id,user_id' });
+    if (error) return { success: false, message: 'Não foi possível registrar seu voto.' };
+    return { success: true };
+  };
+
+  // Votes are anonymous (RLS only lets a user read their own vote row —
+  // see 0034_polls.sql), so the only way to get per-option totals is the
+  // poll_results() RPC, which aggregates server-side without exposing who
+  // voted for what.
+  const fetchPollState = useCallback(async (postId) => {
+    if (!currentUser) return { myVote: null, results: {} };
+    const [{ data: voteRow }, { data: resultRows }] = await Promise.all([
+      supabase.from('poll_votes').select('option_id').eq('post_id', postId).eq('user_id', currentUser.id).maybeSingle(),
+      supabase.rpc('poll_results', { target_post_id: postId })
+    ]);
+    const results = {};
+    (resultRows || []).forEach(r => { results[r.option_id] = r.votes; });
+    return { myVote: voteRow?.option_id || null, results };
+  }, [currentUser]);
 
   const toggleLikePost = async (postId) => {
     if (!currentUser) return;
@@ -520,6 +586,9 @@ export const SocialProvider = ({ children }) => {
       canChat,
       sendMessage,
       createPost,
+      createPoll,
+      castVote,
+      fetchPollState,
       toggleLikePost,
       addComment,
       deletePost,

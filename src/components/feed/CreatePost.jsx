@@ -6,17 +6,22 @@ import { useMultiImageUpload } from '../../lib/useMultiImageUpload';
 import { watermarkImage } from '../../lib/watermark';
 import { Avatar } from '../common/Avatar';
 import { CameraCapture } from '../common/CameraCapture';
-import { Image, Camera, Send, Sparkles, Loader2, X, ShieldAlert } from 'lucide-react';
+import { Image, Camera, Send, Sparkles, Loader2, X, ShieldAlert, BarChart3, Plus } from 'lucide-react';
+
+const MAX_POLL_OPTIONS = 4;
 
 export const CreatePost = () => {
   const { currentUser, setIsAuthModalOpen } = useAuth();
-  const { createPost } = useSocial();
+  const { createPost, createPoll } = useSocial();
   const { showToast } = useToast();
 
   const [content, setContent] = useState('');
   const [posting, setPosting] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const fileInputRef = useRef(null);
+
+  const [pollMode, setPollMode] = useState(false);
+  const [pollOptions, setPollOptions] = useState(['', '']);
 
   const { images, addFiles, removeImage, reset, isUploading, readyUrls } = useMultiImageUpload(
     'media',
@@ -25,13 +30,55 @@ export const CreatePost = () => {
   );
 
   const handleFileChange = (e) => {
-    addFiles(e.target.files);
+    // A poll post only has one media_url, so at most one photo makes
+    // sense there — picking a new one while in poll mode replaces
+    // whatever was attached instead of adding a second.
+    if (pollMode) {
+      if (e.target.files[0]) {
+        reset();
+        addFiles([e.target.files[0]]);
+      }
+    } else {
+      addFiles(e.target.files);
+    }
     e.target.value = '';
   };
 
   const handleCameraCapture = (files) => {
     setCameraOpen(false);
-    addFiles(files);
+    if (pollMode) {
+      if (files[0]) {
+        reset();
+        addFiles([files[0]]);
+      }
+    } else {
+      addFiles(files);
+    }
+  };
+
+  const togglePollMode = () => {
+    setPollMode(prev => {
+      const next = !prev;
+      // A poll post only carries one media_url — trim down to the first
+      // photo if more than one was already attached before switching in.
+      if (next && images.length > 1) {
+        images.slice(1).forEach(img => removeImage(img.id));
+      }
+      return next;
+    });
+    setPollOptions(['', '']);
+  };
+
+  const updatePollOption = (index, value) => {
+    setPollOptions(prev => prev.map((o, i) => (i === index ? value : o)));
+  };
+
+  const addPollOption = () => {
+    setPollOptions(prev => (prev.length >= MAX_POLL_OPTIONS ? prev : [...prev, '']));
+  };
+
+  const removePollOption = (index) => {
+    setPollOptions(prev => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)));
   };
 
   const handleSubmit = async (e) => {
@@ -40,6 +87,25 @@ export const CreatePost = () => {
       setIsAuthModalOpen(true);
       return;
     }
+
+    if (pollMode) {
+      if (!content.trim()) return;
+      if (isUploading) return;
+      setPosting(true);
+      const res = await createPoll(content, pollOptions, readyUrls[0] || null);
+      setPosting(false);
+      if (!res.success) {
+        showToast(res.message, 'error');
+        return;
+      }
+      showToast('Enquete publicada!', 'success');
+      setContent('');
+      setPollMode(false);
+      setPollOptions(['', '']);
+      reset();
+      return;
+    }
+
     if (!content.trim() && readyUrls.length === 0) return;
     if (isUploading) return;
 
@@ -112,12 +178,49 @@ export const CreatePost = () => {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder={
-              currentUser.isCouple
-                ? 'O que você e seu amor estão aprontando hoje? Compartilhem no feed...'
-                : 'Compartilhe momentos, fotos ou pensamentos...'
+              pollMode
+                ? 'Faça sua pergunta...'
+                : currentUser.isCouple
+                  ? 'O que você e seu amor estão aprontando hoje? Compartilhem no feed...'
+                  : 'Compartilhe momentos, fotos ou pensamentos...'
             }
             className="w-full bg-[var(--c-bg)] border border-[var(--c-border)] rounded-2xl p-3 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500/50 resize-none h-20 transition"
           ></textarea>
+
+          {pollMode && (
+            <div className="space-y-1.5 mt-2">
+              {pollOptions.map((option, index) => (
+                <div key={index} className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={(e) => updatePollOption(index, e.target.value)}
+                    placeholder={`Opção ${index + 1}`}
+                    className="flex-1 bg-[var(--c-bg)] border border-[var(--c-border)] rounded-xl px-3 py-2 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500/50"
+                  />
+                  {pollOptions.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removePollOption(index)}
+                      className="p-1.5 text-[var(--c-text-faint)] hover:text-red-400 rounded-lg transition flex-shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {pollOptions.length < MAX_POLL_OPTIONS && (
+                <button
+                  type="button"
+                  onClick={addPollOption}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar opção
+                </button>
+              )}
+              <p className="text-[10px] text-[var(--c-text-faint)]">Enquete de escolha única e voto anônimo.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -148,7 +251,7 @@ export const CreatePost = () => {
         </div>
       )}
 
-      <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
+      <input ref={fileInputRef} type="file" accept="image/*" multiple={!pollMode} className="hidden" onChange={handleFileChange} />
 
       <p className="flex items-start gap-1.5 text-[9px] leading-relaxed text-[var(--c-text-faint)]">
         <ShieldAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
@@ -161,6 +264,7 @@ export const CreatePost = () => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
+            title={pollMode ? 'Anexar uma foto à enquete' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition"
           >
             <Image className="w-4 h-4 text-emerald-400" />
@@ -169,10 +273,21 @@ export const CreatePost = () => {
           <button
             type="button"
             onClick={() => setCameraOpen(true)}
+            title={pollMode ? 'Anexar uma foto à enquete' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)] transition"
           >
             <Camera className="w-4 h-4 text-emerald-400" />
             <span>Câmera</span>
+          </button>
+          <button
+            type="button"
+            onClick={togglePollMode}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+              pollMode ? 'bg-rose-500/15 text-rose-400' : 'text-[var(--c-text-muted)] hover:text-[var(--c-text)] hover:bg-[var(--c-overlay-5)]'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-purple-400" />
+            <span>Enquete</span>
           </button>
         </div>
 

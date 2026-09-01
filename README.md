@@ -28,6 +28,11 @@ conta Stripe).
 - **Cadastro/login** com verificação de e-mail por código, perfis de
   solteiro(a) ou casal, preferências de match (idade, sexo, raio de distância)
 - **Feed** de publicações com fotos, sugestões de perfis
+- **Enquetes** — publicação com pergunta + 2 a 4 opções (`posts.type =
+  'poll'`), voto único e anônimo por pessoa (`poll_votes`, um voto por
+  usuário via índice único). Ninguém, nem por consulta direta ao banco,
+  consegue ver quem votou em quê — os totais só saem da função
+  `poll_results()` (agregado, sem expor linha por usuário)
 - **Chat direto** — qualquer pessoa pode receber mensagens, mas só membros
   PRÓ podem iniciar conversas e enviar fotos
 - **Salas de Grupo VIP** — bate-papos coletivos com regras de entrada

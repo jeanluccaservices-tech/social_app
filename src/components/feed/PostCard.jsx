@@ -6,13 +6,38 @@ import { MediaLightbox } from '../common/MediaLightbox';
 import { REPORT_REASONS } from '../../lib/constants';
 import { noDownloadImageProps } from '../../lib/mediaProtection';
 import { useToast } from '../../context/ToastContext';
-import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag, X, Users } from 'lucide-react';
+import { Heart, MessageCircle, Sparkles, UserPlus, MessageSquare, Send, Check, Trash2, MoreVertical, Flag, X, Users, BarChart3 } from 'lucide-react';
 
 export const PostCard = ({ post, onOpenChatWithUser, onSelectUser, autoOpenComments = false }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
-  const { toggleLikePost, addComment, deletePost, deleteComment, reportPost, getFriendshipStatus, sendFriendRequest } = useSocial();
+  const {
+    toggleLikePost, addComment, deletePost, deleteComment, reportPost, getFriendshipStatus, sendFriendRequest,
+    fetchPollState, castVote
+  } = useSocial();
   const { showToast } = useToast();
   const [showComments, setShowComments] = useState(false);
+
+  const [pollState, setPollState] = useState({ myVote: null, results: {} });
+  const [voting, setVoting] = useState(false);
+
+  useEffect(() => {
+    if (post.type !== 'poll') return;
+    let active = true;
+    fetchPollState(post.id).then((state) => { if (active) setPollState(state); });
+    return () => { active = false; };
+  }, [post.type, post.id, fetchPollState]);
+
+  const handleVote = async (optionId) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setVoting(true);
+    const res = await castVote(post.id, optionId);
+    if (res.success) setPollState(await fetchPollState(post.id));
+    setVoting(false);
+    if (!res.success) showToast(res.message, 'error');
+  };
 
   // Coming from a "commented on your post" notification — land with the
   // comment thread already open instead of making the person click again.
@@ -275,6 +300,50 @@ export const PostCard = ({ post, onOpenChatWithUser, onSelectUser, autoOpenComme
           {post.content}
         </p>
       </div>
+
+      {/* Poll */}
+      {post.type === 'poll' && post.pollOptions?.length > 0 && (() => {
+        const totalVotes = Object.values(pollState.results).reduce((a, b) => a + b, 0);
+        const voted = !!pollState.myVote;
+        return (
+          <div className="px-4 pb-3 space-y-1.5">
+            {post.pollOptions.map((opt) => {
+              const votes = pollState.results[opt.id] || 0;
+              const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+              const isMyVote = pollState.myVote === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => !voted && handleVote(opt.id)}
+                  disabled={voting || voted}
+                  className={`relative w-full text-left p-2.5 rounded-xl border overflow-hidden transition ${
+                    isMyVote ? 'border-rose-500' : 'border-[var(--c-border)]'
+                  } ${voted ? 'cursor-default' : 'hover:border-rose-500/50 cursor-pointer'}`}
+                >
+                  {voted && (
+                    <div
+                      className="absolute inset-y-0 left-0 bg-rose-500/15 transition-[width]"
+                      style={{ width: `${pct}%` }}
+                    />
+                  )}
+                  <div className="relative flex items-center justify-between gap-2">
+                    <span className={`text-xs ${isMyVote ? 'font-bold text-[var(--c-text)]' : 'text-[var(--c-text-dim)]'}`}>
+                      {opt.text}
+                    </span>
+                    {voted && (
+                      <span className="text-[11px] font-bold text-[var(--c-text-muted)] flex-shrink-0">{pct}%</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+            <p className="text-[10px] text-[var(--c-text-faint)] flex items-center gap-1 pt-0.5">
+              <BarChart3 className="w-3 h-3" /> {totalVotes} {totalVotes === 1 ? 'voto' : 'votos'} · Enquete anônima
+            </p>
+          </div>
+        );
+      })()}
 
       {/* Post Media (Photo) */}
       {post.mediaUrl && (
