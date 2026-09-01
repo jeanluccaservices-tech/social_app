@@ -10,6 +10,7 @@
 // "manage your own media folder" storage policies, which only allow
 // writes whose first path segment is the caller's own uid.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { checkRateLimit, clientIdentity } from '../_shared/rateLimit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,15 +53,20 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Não autenticado.' }, 401);
   }
 
-  const { post_id: postId } = await req.json().catch(() => ({}));
-  if (!postId) {
-    return jsonResponse({ error: 'post_id é obrigatório.' }, 400);
-  }
-
   const supabaseAdmin = createClient(
     Deno.env.get('SUPABASE_URL') as string,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string
   );
+
+  const withinLimit = await checkRateLimit(supabaseAdmin, `delete-post:${clientIdentity(req, user.id)}`, 20, 3600);
+  if (!withinLimit) {
+    return jsonResponse({ error: 'Muitas exclusões em pouco tempo. Aguarde um pouco e tente novamente.' }, 429);
+  }
+
+  const { post_id: postId } = await req.json().catch(() => ({}));
+  if (!postId) {
+    return jsonResponse({ error: 'post_id é obrigatório.' }, 400);
+  }
 
   // Ownership + "not already deleted" check happens server-side here,
   // same guarantee the old SECURITY DEFINER RPC gave.

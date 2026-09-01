@@ -68,13 +68,20 @@ const SECTIONS = [
     ]
   },
   {
-    title: '9. Alterações nestes Termos',
+    title: '9. Cancelamento da Assinatura PRÓ',
+    body: [
+      'Nos termos do art. 49 do Código de Defesa do Consumidor, você pode desistir da assinatura PRÓ em até 7 (sete) dias corridos após a confirmação do pagamento, com reembolso integral do valor pago. A opção de cancelamento fica disponível na própria tela da assinatura, dentro do aplicativo.',
+      'Após o prazo de 7 dias, o pagamento já realizado não é reembolsável, mas a assinatura simplesmente não é renovada automaticamente ao final do período contratado, conforme descrito na seção da assinatura PRÓ.'
+    ]
+  },
+  {
+    title: '10. Alterações nestes Termos',
     body: [
       'Estes Termos podem ser atualizados periodicamente para refletir mudanças na plataforma ou na legislação. O uso continuado do LoveVibe após uma atualização representa a aceitação dos novos termos.'
     ]
   },
   {
-    title: '10. Contato',
+    title: '11. Contato',
     body: [
       'Dúvidas sobre estes Termos, privacidade ou sobre sua conta podem ser enviadas para suporte@lovevibe.com.br.'
     ]

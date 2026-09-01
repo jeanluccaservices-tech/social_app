@@ -14,6 +14,7 @@
 //   SITE_URL         - the deployed app's URL, used to build the post link
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { Resend } from 'npm:resend';
+import { checkRateLimit, clientIdentity } from '../_shared/rateLimit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,15 +56,20 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Não autenticado.' }, 401);
   }
 
-  const { post_id: postId, reason, details } = await req.json().catch(() => ({}));
-  if (!postId || !reason) {
-    return jsonResponse({ error: 'post_id e reason são obrigatórios.' }, 400);
-  }
-
   const supabaseAdmin = createClient(
     Deno.env.get('SUPABASE_URL') as string,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string
   );
+
+  const withinLimit = await checkRateLimit(supabaseAdmin, `report-post:${clientIdentity(req, user.id)}`, 10, 3600);
+  if (!withinLimit) {
+    return jsonResponse({ error: 'Muitas denúncias em pouco tempo. Aguarde um pouco e tente novamente.' }, 429);
+  }
+
+  const { post_id: postId, reason, details } = await req.json().catch(() => ({}));
+  if (!postId || !reason) {
+    return jsonResponse({ error: 'post_id e reason são obrigatórios.' }, 400);
+  }
 
   const { error: insertError } = await supabaseAdmin
     .from('post_reports')

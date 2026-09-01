@@ -107,7 +107,7 @@ export const LoginGate = () => {
         {/* Hero copy */}
         <div className="space-y-3 max-w-2xl">
           <h2 className="font-display text-2xl sm:text-3xl font-semibold text-[var(--c-text)] leading-snug">
-            Conexões reais, conversas sem filtro e experiências que você não encontra em outros aplicativos.
+            Conexões reais, conversas sem filtro e experiências que você só encontra aqui.
           </h2>
           <p className="text-sm sm:text-base text-[var(--c-accent)] leading-relaxed">
             Contamos com serviços diferenciados: chat privado, salas de grupo exclusivas, match por swipe

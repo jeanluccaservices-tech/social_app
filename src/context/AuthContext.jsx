@@ -84,7 +84,7 @@ export const AuthProvider = ({ children }) => {
 
   // Re-reads the logged-in user's own row — used after an action whose
   // effect lands via a server-side process (e.g. a Pix payment approved by
-  // the mp-webhook Edge Function) rather than from the client's own write.
+  // the stripe-webhook Edge Function) rather than from the client's own write.
   const refreshCurrentUser = useCallback(async () => {
     if (!session) return;
     await fetchCurrentProfile(session.user.id);
@@ -93,12 +93,24 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!active) return;
-      setSession(session);
-      await Promise.all([fetchUsers(), fetchCurrentProfile(session?.user?.id)]);
-      if (active) setAuthLoading(false);
-    });
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!active) return;
+        setSession(session);
+        await Promise.all([fetchUsers(), fetchCurrentProfile(session?.user?.id)]);
+      } catch (error) {
+        // A cold first load can hit a transient network hiccup (DNS/TLS not
+        // warmed up yet) here. Without this catch, the rejection was
+        // unhandled and authLoading never cleared, freezing the app on the
+        // splash screen until a manual refresh retried on a warm connection.
+        console.error('Failed to load initial session', error);
+      } finally {
+        if (active) setAuthLoading(false);
+      }
+    })();
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
@@ -197,6 +209,40 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  // Triggers a password-recovery e-mail through the request-password-reset
+  // Edge Function, which enforces the real limit (3 e-mails/24h per
+  // address, plus a per-IP throttle) and checks the e-mail actually has an
+  // account first — the client can't be trusted to self-limit any of this.
+  const requestPasswordReset = async (email) => {
+    const { error } = await supabase.functions.invoke('request-password-reset', { body: { email } });
+    if (error) {
+      let message = 'Não foi possível enviar o e-mail de recuperação. Tente novamente.';
+      try {
+        const errBody = await error.context?.json();
+        if (errBody?.error) message = errBody.error;
+      } catch {
+        // keep the generic message
+      }
+      return { success: false, message };
+    }
+    return { success: true };
+  };
+
+  // Confirms the 6-digit recovery code (delivered via the same Resend
+  // send-email hook, 'recovery' case) and sets the new password.
+  const confirmPasswordReset = async (email, token, newPassword) => {
+    if (newPassword.length < 6) return { success: false, message: 'A senha deve ter pelo menos 6 caracteres.' };
+
+    const { error: otpError } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' });
+    if (otpError) return { success: false, message: mapAuthError(otpError) };
+
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) return { success: false, message: mapAuthError(updateError) };
+
+    setIsAuthModalOpen(false);
+    return { success: true };
+  };
+
   const logout = async () => {
     setLoggingOut(true);
     await supabase.auth.signOut();
@@ -262,6 +308,25 @@ export const AuthProvider = ({ children }) => {
     return { success: true };
   };
 
+  // Cancels the most recent PRO payment within its 7-day withdrawal window
+  // (CDC art. 49) via the cancel-pro-subscription Edge Function, which
+  // refunds it through Stripe and rolls pro_expires_at back accordingly.
+  const cancelProSubscription = async () => {
+    const { error } = await supabase.functions.invoke('cancel-pro-subscription');
+    if (error) {
+      let message = 'Não foi possível cancelar. Tente novamente.';
+      try {
+        const errBody = await error.context?.json();
+        if (errBody?.error) message = errBody.error;
+      } catch {
+        // keep the generic message
+      }
+      return { success: false, message };
+    }
+    await refreshCurrentUser();
+    return { success: true };
+  };
+
   // Permanently deletes the account: archives the id/username into
   // deleted_accounts, then removes the auth user, which cascades through
   // every table with a profiles(id) FK (posts, comments, messages in both
@@ -286,11 +351,14 @@ export const AuthProvider = ({ children }) => {
       register,
       verifySignup,
       resendVerification,
+      requestPasswordReset,
+      confirmPasswordReset,
       logout,
       loggingOut,
       refreshCurrentUser,
       updateProfile,
       changePassword,
+      cancelProSubscription,
       deleteAccount,
       fetchUsers,
       isAuthModalOpen,
