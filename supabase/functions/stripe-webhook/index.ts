@@ -11,8 +11,15 @@
 //                             Stripe Dashboard (or `stripe listen`)
 //
 // Configure this URL as the endpoint in your Stripe Dashboard's Webhooks
-// settings, listening for `checkout.session.completed` and
-// `payment_intent.succeeded`.
+// settings, listening for `checkout.session.completed`,
+// `checkout.session.async_payment_succeeded`,
+// `checkout.session.async_payment_failed` and `payment_intent.succeeded`.
+//
+// Delayed payment methods (Boleto, Pix via Checkout, etc.) complete the
+// Checkout Session immediately with payment_status "unpaid" — the actual
+// confirmation, days later, arrives as `checkout.session.async_payment_*`,
+// never as another `checkout.session.completed`. Without listening for
+// `async_payment_succeeded` a Boleto payment would never grant PRO.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@17.7.0';
 
@@ -45,13 +52,22 @@ Deno.serve(async (req) => {
     let status: string | null = null;
     let amountCents: number | null = null;
 
-    if (event.type === 'checkout.session.completed') {
+    if (
+      event.type === 'checkout.session.completed' ||
+      event.type === 'checkout.session.async_payment_succeeded' ||
+      event.type === 'checkout.session.async_payment_failed'
+    ) {
       const session = event.data.object as Stripe.Checkout.Session;
       userId = session.client_reference_id || session.metadata?.user_id || null;
       providerPaymentId =
         typeof session.payment_intent === 'string' ? session.payment_intent : (session.payment_intent?.id ?? null);
       providerSessionId = session.id;
-      status = session.payment_status === 'paid' ? 'approved' : session.payment_status;
+      status =
+        event.type === 'checkout.session.async_payment_failed'
+          ? 'failed'
+          : session.payment_status === 'paid'
+            ? 'approved'
+            : session.payment_status;
       amountCents = session.amount_total ?? null;
     } else if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
@@ -73,6 +89,20 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') as string
     );
 
+    // Stripe can (and does) deliver more than one event for the same
+    // payment — e.g. a Checkout-based Boleto payment fires both
+    // `checkout.session.async_payment_succeeded` and
+    // `payment_intent.succeeded`, and Stripe also retries undelivered
+    // events. Without this check, each additional event for an
+    // already-approved payment would extend pro_expires_at by another
+    // month on top of the last one.
+    const { data: existing } = await supabaseAdmin
+      .from('payment_transactions')
+      .select('status')
+      .eq('provider_payment_id', providerPaymentId)
+      .maybeSingle();
+    const alreadyApproved = existing?.status === 'approved';
+
     await supabaseAdmin.from('payment_transactions').upsert(
       {
         user_id: userId,
@@ -86,7 +116,7 @@ Deno.serve(async (req) => {
       { onConflict: 'provider_payment_id' }
     );
 
-    if (status === 'approved') {
+    if (status === 'approved' && !alreadyApproved) {
       // PRO lasts 1 month from payment and does not auto-renew. If they
       // paid again before a previous period expired, extend from that
       // expiry instead of from now, so no paid days are lost.

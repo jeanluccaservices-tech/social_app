@@ -28,3 +28,14 @@ export const isWithinRadius = (originLocation, otherLocation, radiusKm) => {
   if (!origin || !other) return true;
   return distanceKm(origin.lat, origin.lng, other.lat, other.lng) <= radiusKm;
 };
+
+// Distance in km between two "Cidade, UF" strings, or null if either is
+// unknown/blank — for sorting by distance (isWithinRadius above only
+// answers a yes/no question, it doesn't expose the actual number).
+export const distanceBetweenLocations = (locationA, locationB) => {
+  if (!locationA || !locationB) return null;
+  const a = findCityCoords(locationA);
+  const b = findCityCoords(locationB);
+  if (!a || !b) return null;
+  return distanceKm(a.lat, a.lng, b.lat, b.lng);
+};

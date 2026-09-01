@@ -28,6 +28,11 @@ conta Stripe).
 - **Cadastro/login** com verificação de e-mail por código, perfis de
   solteiro(a) ou casal, preferências de match (idade, sexo, raio de distância)
 - **Feed** de publicações com fotos, sugestões de perfis
+- **Enquetes** — publicação com pergunta + 2 a 4 opções (`posts.type =
+  'poll'`), voto único e anônimo por pessoa (`poll_votes`, um voto por
+  usuário via índice único). Ninguém, nem por consulta direta ao banco,
+  consegue ver quem votou em quê — os totais só saem da função
+  `poll_results()` (agregado, sem expor linha por usuário)
 - **Chat direto** — qualquer pessoa pode receber mensagens, mas só membros
   PRÓ podem iniciar conversas e enviar fotos
 - **Salas de Grupo VIP** — bate-papos coletivos com regras de entrada
@@ -41,6 +46,15 @@ conta Stripe).
   botão que abre o Checkout do Stripe com os métodos de pagamento
   habilitados na conta (`src/components/auth/ProModal.jsx`)
 - **Perfis de casal**, avisos de moderação/denúncia e notificações
+- **Painel Admin** (`src/components/admin/AdminPanel.jsx`) — aba extra
+  visível só para contas na tabela `admins`, com indicadores (usuários
+  ativos, VIP, banidos, denúncias pendentes, contas excluídas), lista de
+  denúncias com ação de resolver/ignorar, apagar o post denunciado ou
+  banir o autor, e busca/banimento de qualquer usuário. A aba escondida é
+  só conveniência — toda ação é validada no servidor via `is_admin()`
+  (RLS + Edge Functions), nunca só pela UI. Não há tela para se
+  autopromover a admin: a única forma de adicionar alguém é inserir
+  diretamente na tabela `admins` (por SQL, no Supabase)
 
 ## Rodando localmente
 
@@ -97,10 +111,18 @@ VITE_SUPABASE_ANON_KEY=sb_publishable_xxxxx
   - `delete-post` — exclusão lógica de post: marca `deleted_at` e, se o
     post tiver imagem, move o arquivo no Storage para o prefixo `deleted/`
     do mesmo bucket (fica separado das imagens ativas, para conferência
-    manual — veja "Moderação de imagens excluídas" abaixo)
+    manual — veja "Moderação de imagens excluídas" abaixo). Também aceita
+    exclusão de post de qualquer usuário quando o chamador é admin
+    (`is_admin()`, checado no servidor), usado pelo Painel Admin
   - `report-post` — registra a denúncia em `post_reports` e envia um
     e-mail de notificação (motivo, detalhes, dados de quem denunciou, autor
     e conteúdo da publicação denunciada, e o link) para `REPORT_TO_EMAIL`
+  - `admin-ban-user` / `admin-unban-user` — banem/desbanem uma conta via
+    Supabase Auth Admin API (`auth.users.banned_until`, o que de fato
+    bloqueia login/refresh — não é só um sinalizador de UI), espelhando o
+    valor em `profiles.banned_until`. Só funcionam para quem está na
+    tabela `admins` (checado no servidor via `is_admin()`, nunca confiando
+    só na aba escondida no app)
 
   `stripe-checkout`, `stripe-pix-payment`, `cancel-pro-subscription`,
   `report-post`, `delete-post` e `request-password-reset` são protegidas
@@ -123,9 +145,15 @@ REPORT_TO_EMAIL=denuncias@lovevibe.com.br
 
 Configure no Dashboard do Stripe (Webhooks) o endpoint
 `https://<seu-projeto>.functions.supabase.co/stripe-webhook`, escutando os
-eventos `checkout.session.completed` e `payment_intent.succeeded`, e copie o
-signing secret gerado para `STRIPE_WEBHOOK_SECRET`. Para testar localmente,
-use o Stripe CLI: `stripe listen --forward-to <url-local-da-function>`.
+eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed` e `payment_intent.succeeded`, e copie
+o signing secret gerado para `STRIPE_WEBHOOK_SECRET`. Os dois eventos
+`async_payment_*` são obrigatórios para métodos de pagamento assíncronos
+(Boleto, por exemplo): `checkout.session.completed` dispara na hora com o
+boleto ainda não pago, e só quando ele é efetivamente pago (dias depois) a
+Stripe manda `checkout.session.async_payment_succeeded` — sem esse evento
+configurado, o PRO nunca seria liberado para quem paga com boleto. Para
+testar localmente, use o Stripe CLI: `stripe listen --forward-to <url-local-da-function>`.
 
 O valor da assinatura PRÓ (`PRO_PRICE_BRL`) está definido em
 `stripe-checkout/index.ts` (e replicado em `stripe-pix-payment/index.ts`,

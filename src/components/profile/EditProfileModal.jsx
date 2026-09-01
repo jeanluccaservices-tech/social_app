@@ -11,8 +11,10 @@ import {
 } from '../../lib/constants';
 import { CitySelect } from '../common/CitySelect';
 import { Avatar } from '../common/Avatar';
+import { useBackButtonClose } from '../../lib/useBackButtonClose';
 
 export const EditProfileModal = ({ isOpen, onClose, user }) => {
+  useBackButtonClose(isOpen, onClose);
   const { updateProfile, changePassword, deleteAccount } = useAuth();
   const { showToast } = useToast();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);

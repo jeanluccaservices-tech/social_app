@@ -8,11 +8,20 @@ import { Avatar } from '../common/Avatar';
 import { MediaLightbox } from '../common/MediaLightbox';
 import { CameraCapture } from '../common/CameraCapture';
 import { noDownloadImageProps } from '../../lib/mediaProtection';
-import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, Camera, X, Loader2 } from 'lucide-react';
+import { usePullToRefresh } from '../../lib/usePullToRefresh';
+import { Send, Search, MessageSquare, ArrowLeft, Image as ImageIcon, Camera, X, Loader2, Ban } from 'lucide-react';
 
 export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen } = useAuth();
-  const { messages, sendMessage, canChat, contactsLoading, areFriends, markMessagesRead } = useSocial();
+  const {
+    messages, sendMessage, canChat, contactsLoading, areFriends, markMessagesRead,
+    isBlocked, blockedProfiles, fetchBlockedProfiles, fetchContacts
+  } = useSocial();
+
+  useEffect(() => { fetchBlockedProfiles(); }, [fetchBlockedProfiles]);
+
+  const contactsListRef = useRef(null);
+  const { pullDistance, refreshing, handlers: pullHandlers } = usePullToRefresh(contactsListRef, fetchContacts);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeUser, setActiveUser] = useState(() => selectedTargetUser || null);
@@ -61,8 +70,13 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
       .map(m => (m.senderId === currentUser.id ? m.receiverId : m.senderId))
   );
 
+  // Blocked profiles drop out of the RLS-filtered `users` list entirely —
+  // merge back in the ones with message history so a blocked contact keeps
+  // showing (as blocked) in the chat history instead of just vanishing.
+  const blockedContacts = blockedProfiles.filter(p => contactedUserIds.has(p.id));
+
   // Filter contacts list
-  const otherUsers = users.filter(u => u.id !== currentUser.id && (
+  const otherUsers = [...users, ...blockedContacts].filter(u => u.id !== currentUser.id && (
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
   ) && (areFriends(currentUser.id, u.id) || contactedUserIds.has(u.id)));
@@ -78,6 +92,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
 
   // Check chat permission for active user
   const chatPermission = activeUser ? canChat(activeUser) : { allowed: false };
+  const blocked = !!activeUser && isBlocked(activeUser.id);
 
   // Filter messages between currentUser and activeUser
   const conversationMessages = activeUser ? messages.filter(
@@ -87,7 +102,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if ((!inputMessage.trim() && readyUrls.length === 0) || !activeUser || sending || isUploading) return;
+    if ((!inputMessage.trim() && readyUrls.length === 0) || !activeUser || sending || isUploading || blocked) return;
     setSending(true);
     // Several photos become several messages — one bubble per photo, same
     // as most chat apps do when you pick more than one at once. The typed
@@ -142,14 +157,19 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
             onClick={() => onSelectUser(activeUser)}
             className="flex items-center gap-3 cursor-pointer group min-w-0"
           >
-            <Avatar src={activeUser.avatar} alt={activeUser.name} isCouple={activeUser.isCouple} className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500 flex-shrink-0" />
+            <div className="relative flex-shrink-0">
+              <Avatar src={activeUser.avatar} alt={activeUser.name} isCouple={activeUser.isCouple} className="w-10 h-10 rounded-full object-cover ring-2 ring-rose-500" />
+              {activeUser.isOnline && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--c-surface)]" />}
+            </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-[var(--c-text)] group-hover:text-rose-400 transition flex items-center gap-1.5 truncate">
                 {activeUser.name}
                 {activeUser.isCouple && <span className="text-xs text-rose-400">❤️</span>}
               </h3>
               <p className="text-[10px] text-[var(--c-accent)] truncate">
-                @{activeUser.username} • {activeUser.isCouple ? `Casal (${activeUser.age} anos)` : `${activeUser.gender}, ${activeUser.age} anos`}
+                {blocked
+                  ? <span className="text-red-400 font-semibold">Usuário bloqueado</span>
+                  : <>@{activeUser.username} • {activeUser.isCouple ? `Casal (${activeUser.age} anos)` : `${activeUser.gender}, ${activeUser.age} anos`}</>}
               </p>
             </div>
           </div>
@@ -200,7 +220,22 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
       </div>
 
       {/* Chat Input Field — visible to everyone, but sending requires PRO */}
-      {chatPermission.allowed ? (
+      {blocked ? (
+        <div className="p-4 text-center space-y-2 bg-[var(--c-surface-2)] border-t border-[var(--c-border)]">
+          <p className="text-xs text-red-400 font-semibold flex items-center justify-center gap-1.5">
+            <Ban className="w-3.5 h-3.5" /> Você bloqueou {activeUser.name}.
+          </p>
+          <p className="text-[11px] text-[var(--c-text-muted)]">
+            Não é possível enviar nem receber mensagens enquanto o bloqueio estiver ativo. Para desbloquear, acesse o perfil da pessoa e toque em "Desbloquear".
+          </p>
+          <button
+            onClick={() => onSelectUser(activeUser)}
+            className="text-[11px] text-rose-400 hover:text-rose-300 underline transition"
+          >
+            Ver perfil
+          </button>
+        </div>
+      ) : chatPermission.allowed ? (
         <div className="bg-[var(--c-surface-2)] border-t border-[var(--c-border)] flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
           {images.length > 0 && (
             <div className="px-3 pt-3 flex gap-2 overflow-x-auto scrollbar-none">
@@ -296,7 +331,15 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
         </div>
 
         {/* Contacts list */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div ref={contactsListRef} {...pullHandlers} style={{ touchAction: 'pan-y' }} className="flex-1 overflow-y-auto p-2 space-y-1">
+          {(pullDistance > 0 || refreshing) && (
+            <div
+              style={{ height: refreshing ? 32 : pullDistance }}
+              className="flex items-center justify-center overflow-hidden transition-[height]"
+            >
+              <Loader2 className={`w-4 h-4 text-rose-400 ${refreshing ? 'animate-spin' : ''}`} />
+            </div>
+          )}
           {contactsLoading ? (
             <div className="flex items-center justify-center py-10 text-[var(--c-text-muted)]">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -330,6 +373,7 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                         ❤️
                       </span>
                     )}
+                    {u.isOnline && <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--c-surface)]" />}
                     {hasUnread && (
                       <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-rose-500 ring-2 ring-[var(--c-surface-2)]" />
                     )}
@@ -340,7 +384,9 @@ export const ChatView = ({ selectedTargetUser, onSelectUser }) => {
                       {u.name}
                     </p>
                     <p className={`text-[10px] truncate ${hasUnread ? 'text-[var(--c-text)] font-semibold' : 'text-[var(--c-accent)]'}`}>
-                      {lastMsg
+                      {isBlocked(u.id) ? (
+                        <span className="text-red-400 font-semibold">Usuário bloqueado</span>
+                      ) : lastMsg
                         ? (lastMsg.text || (lastMsg.mediaUrl ? '📷 Foto' : ''))
                         : `${u.isCouple ? 'Casal' : u.gender} • @${u.username}`}
                     </p>

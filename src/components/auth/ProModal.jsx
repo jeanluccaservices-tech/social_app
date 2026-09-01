@@ -7,9 +7,11 @@ import {
 } from 'lucide-react';
 import { formatFullDateTime } from '../../utils/time';
 import { SupportButton } from '../common/SupportButton';
+import { useBackButtonClose } from '../../lib/useBackButtonClose';
 
 export const ProModal = () => {
   const { currentUser, isProModalOpen, setIsProModalOpen, setIsAuthModalOpen, cancelProSubscription } = useAuth();
+  useBackButtonClose(isProModalOpen, () => setIsProModalOpen(false));
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -211,7 +213,7 @@ export const ProModal = () => {
               <span>{isProcessing ? 'Abrindo pagamento...' : 'Assinar Plano VIP (R$ 24,90)'}</span>
             </button>
             <p className="text-[10px] text-center text-[var(--c-text-faint)]">
-              🔒 Pagamento seguro via Stripe (cartão, boleto ou Pix). Renovação manual — sem cobrança recorrente automática.
+              🔒 Pagamento seguro via Stripe. Renovação manual — sem cobrança recorrente automática.
             </p>
           </div>
         ) : (

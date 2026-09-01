@@ -5,9 +5,10 @@ import { useToast } from '../../context/ToastContext';
 import { MatchTab } from './MatchTab';
 import { ProfileSuggestions } from '../feed/ProfileSuggestions';
 import { Avatar } from '../common/Avatar';
-import { isWithinRadius } from '../../lib/geo';
+import { CitySelect } from '../common/CitySelect';
+import { isWithinRadius, distanceBetweenLocations } from '../../lib/geo';
 import { GENDERS, MIN_RADIUS_KM, MAX_RADIUS_KM, sanitizeRadiusInput, clampRadius } from '../../lib/constants';
-import { Users, UserCheck, UserPlus, UserX, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal, Lock } from 'lucide-react';
+import { Users, UserCheck, UserPlus, UserX, Check, X, MessageSquare, Sparkles, UserMinus, Search, LayoutGrid, List, Heart, MapPin, Loader2, SlidersHorizontal, Lock, Camera } from 'lucide-react';
 
 export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
   const { currentUser, users, setIsAuthModalOpen, setIsProModalOpen } = useAuth();
@@ -25,6 +26,11 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
   const [filterAgeMin, setFilterAgeMin] = useState(() => currentUser?.preferences?.ageMin ?? '');
   const [filterAgeMax, setFilterAgeMax] = useState(() => currentUser?.preferences?.ageMax ?? '');
   const [filterRadiusKm, setFilterRadiusKm] = useState(() => currentUser?.preferences?.radiusKm ?? '');
+  const [filterCity, setFilterCity] = useState('');
+  const [onlyWithPhoto, setOnlyWithPhoto] = useState(false);
+  const [sortBy, setSortBy] = useState('relevance'); // 'relevance' | 'distance' | 'age' | 'newest'
+
+  const originLocation = filterCity || currentUser?.location;
 
   const toggleFilterGender = (g) => {
     setFilterGenders(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g]);
@@ -84,9 +90,11 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
       if (filterAgeMax && age > Number(filterAgeMax)) return false;
     }
 
-    if (filterRadiusKm && !isWithinRadius(currentUser.location, u.location, Number(filterRadiusKm))) {
+    if (filterRadiusKm && !isWithinRadius(originLocation, u.location, Number(filterRadiusKm))) {
       return false;
     }
+
+    if (onlyWithPhoto && !u.avatar) return false;
 
     return true;
   });
@@ -97,14 +105,35 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
   // needs the stricter list.
   const matchCandidates = exploreUsers.filter(u => getFriendshipStatus(u.id) === 'NONE');
 
-  const hasActiveFilters = filterGenders.length > 0 || filterAgeMin || filterAgeMax || filterRadiusKm;
+  const hasActiveFilters = filterGenders.length > 0 || filterAgeMin || filterAgeMax || filterRadiusKm || filterCity || onlyWithPhoto;
+
+  const clearFilters = () => {
+    setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm('');
+    setFilterCity(''); setOnlyWithPhoto(false);
+    showToast('Filtros removidos.', 'success');
+  };
 
   const filteredList = (list) => list.filter(u =>
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.username.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredExplore = filteredList(exploreUsers);
+  const filteredExplore = [...filteredList(exploreUsers)].sort((a, b) => {
+    if (sortBy === 'age') {
+      const ageA = a.isCouple ? Math.min(Number(a.partner1?.age) || 0, Number(a.partner2?.age) || 0) : Number(a.age) || 0;
+      const ageB = b.isCouple ? Math.min(Number(b.partner1?.age) || 0, Number(b.partner2?.age) || 0) : Number(b.age) || 0;
+      return ageA - ageB;
+    }
+    if (sortBy === 'newest') {
+      return new Date(b.createdAtRaw || 0) - new Date(a.createdAtRaw || 0);
+    }
+    if (sortBy === 'distance') {
+      const distA = distanceBetweenLocations(originLocation, a.location) ?? Infinity;
+      const distB = distanceBetweenLocations(originLocation, b.location) ?? Infinity;
+      return distA - distB;
+    }
+    return 0;
+  });
 
   const handleSendRequest = async (targetUserId) => {
     const res = await sendFriendRequest(targetUserId);
@@ -269,19 +298,48 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                     value={filterRadiusKm}
                     onChange={(e) => setFilterRadiusKm(sanitizeRadiusInput(e.target.value))}
                     onBlur={(e) => setFilterRadiusKm(clampRadius(e.target.value))}
-                    placeholder={`de ${currentUser.location || 'sua cidade'}`}
+                    placeholder={`de ${originLocation || 'sua cidade'}`}
                     className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                   />
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[10px] font-semibold text-[var(--c-text-muted)] mb-1">Buscar em outra cidade</label>
+                <CitySelect
+                  value={filterCity}
+                  onChange={(e) => setFilterCity(e.target.value)}
+                  placeholder={`Padrão: ${currentUser.location || 'sua cidade'}`}
+                  className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-[11px] font-semibold text-[var(--c-text-secondary)] cursor-pointer">
+                <input type="checkbox" checked={onlyWithPhoto} onChange={(e) => setOnlyWithPhoto(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-rose-600" />
+                <Camera className="w-3.5 h-3.5 text-rose-400" /> Mostrar só perfis com foto
+              </label>
+
+              {tab === 'explore' && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-[var(--c-text-muted)] mb-1">Ordenar por</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500"
+                  >
+                    <option value="relevance">Relevância</option>
+                    <option value="distance">Mais próximos</option>
+                    <option value="age">Idade (crescente)</option>
+                    <option value="newest">Perfil mais novo</option>
+                  </select>
+                </div>
+              )}
+
               {hasActiveFilters && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm('');
-                    showToast('Filtros removidos.', 'success');
-                  }}
+                  onClick={clearFilters}
                   className="text-[10px] font-semibold text-rose-400 hover:text-rose-300 transition"
                 >
                   Limpar filtros
@@ -314,7 +372,10 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             filteredList(myFriends).map(u => (
               <div key={u.id} className="p-4 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl flex items-center justify-between gap-3 shadow-lg">
                 <div onClick={() => onSelectUser(u)} className="flex items-center gap-3 cursor-pointer overflow-hidden">
-                  <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-12 h-12 rounded-full object-cover ring-2 ring-rose-500/40" />
+                  <div className="relative flex-shrink-0">
+                    <Avatar src={u.avatar} alt={u.name} isCouple={u.isCouple} className="w-12 h-12 rounded-full object-cover ring-2 ring-rose-500/40" />
+                    {u.isOnline && <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-[var(--c-surface)]" />}
+                  </div>
                   <div className="overflow-hidden">
                     <h4 className="text-sm font-bold text-[var(--c-text)] truncate flex items-center gap-1">
                       {u.name} {u.isCouple && '❤️'}
@@ -422,19 +483,6 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             </div>
           </div>
 
-          {/* Results summary — always visible, so it's obvious the list
-              reflects the active filters even when nothing changes visually. */}
-          <p className="text-[11px] text-[var(--c-text-muted)] px-1">
-            {hasActiveFilters ? (
-              <>
-                <span className="font-semibold text-[var(--c-text-secondary)]">{filteredExplore.length}</span> {filteredExplore.length === 1 ? 'perfil encontrado' : 'perfis encontrados'} com os filtros aplicados.
-              </>
-            ) : (
-              <>
-                <span className="font-semibold text-[var(--c-text-secondary)]">{filteredExplore.length}</span> {filteredExplore.length === 1 ? 'perfil disponível' : 'perfis disponíveis'} para explorar.
-              </>
-            )}
-          </p>
 
           {filteredExplore.length === 0 ? (
             <div className="text-center py-12 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-3xl space-y-2">
@@ -444,7 +492,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
                 <>
                   <p className="text-[11px] text-[var(--c-accent)]">Tente ajustar ou limpar os filtros para ver mais gente.</p>
                   <button
-                    onClick={() => { setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm(''); showToast('Filtros removidos.', 'success'); }}
+                    onClick={clearFilters}
                     className="mt-1 px-4 py-2 bg-[var(--c-overlay-5)] hover:bg-[var(--c-overlay-10)] text-xs font-bold text-[var(--c-text-secondary)] rounded-xl border border-[var(--c-border)] transition"
                   >
                     Limpar filtros
@@ -554,7 +602,7 @@ export const FriendsList = ({ onOpenChatWithUser, onSelectUser }) => {
             onLike={handleMatchLike}
             onSelectUser={onSelectUser}
             hasActiveFilters={hasActiveFilters}
-            onClearFilters={() => { setFilterGenders([]); setFilterAgeMin(''); setFilterAgeMax(''); setFilterRadiusKm(''); showToast('Filtros removidos.', 'success'); }}
+            onClearFilters={clearFilters}
           />
         ) : (
           <div className="p-8 bg-gradient-to-b from-amber-950/40 via-rose-950/30 to-[var(--c-surface)] border border-amber-500/30 rounded-3xl text-center space-y-4 max-w-md mx-auto shadow-2xl">
