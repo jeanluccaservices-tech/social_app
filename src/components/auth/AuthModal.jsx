@@ -85,11 +85,11 @@ export const AuthModal = () => {
 
   // Couple specific fields
   const [p1Name, setP1Name] = useState('');
-  const [p1Age, setP1Age] = useState('28');
+  const [p1BirthDate, setP1BirthDate] = useState('');
   const [p1Gender, setP1Gender] = useState('Masculino'); // 'Masculino' | 'Feminino'
 
   const [p2Name, setP2Name] = useState('');
-  const [p2Age, setP2Age] = useState('26');
+  const [p2BirthDate, setP2BirthDate] = useState('');
   const [p2Gender, setP2Gender] = useState('Feminino'); // 'Masculino' | 'Feminino'
 
   if (!isAuthModalOpen) return null;
@@ -119,6 +119,10 @@ export const AuthModal = () => {
       setErrorMsg('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
+    if (!regLocation) {
+      setErrorMsg('Selecione sua cidade para continuar.');
+      return;
+    }
     if (regPassword.length < 6) {
       setErrorMsg('A senha deve ter pelo menos 6 caracteres.');
       return;
@@ -126,16 +130,22 @@ export const AuthModal = () => {
 
     if (regGender === 'Casal') {
       if (!p1Name || !p2Name) {
-        setErrorMsg('Para o cadastro de Casal, preencha os nomes de ambos os integrantes.');
+        setErrorMsg('Preencha o nome (ou apelido) de ambos os integrantes.');
         return;
       }
-      if (!p1Age || Number(p1Age) < 18 || Number(p1Age) > 100 || !p2Age || Number(p2Age) < 18 || Number(p2Age) > 100) {
+      if (!p1BirthDate || !p2BirthDate) {
+        setErrorMsg('Informe a data de nascimento de ambos os integrantes.');
+        return;
+      }
+      const p1Age = calculateAge(p1BirthDate);
+      const p2Age = calculateAge(p2BirthDate);
+      if (p1Age === null || p1Age < 18 || p1Age > 100 || p2Age === null || p2Age < 18 || p2Age > 100) {
         setErrorMsg('Ambos os integrantes do casal precisam ter entre 18 e 100 anos.');
         return;
       }
     } else {
       if (!regName) {
-        setErrorMsg('Por favor, preencha seu Nome ou Apelido.');
+        setErrorMsg('Por favor, preencha seu nome (pode ser um apelido).');
         return;
       }
       if (!regBirthDate) {
@@ -169,8 +179,8 @@ export const AuthModal = () => {
         genders: prefGenders,
         radiusKm: Number(prefRadiusKm) || 50
       },
-      partner1: regGender === 'Casal' ? { name: p1Name, age: p1Age, gender: p1Gender } : null,
-      partner2: regGender === 'Casal' ? { name: p2Name, age: p2Age, gender: p2Gender } : null,
+      partner1: regGender === 'Casal' ? { name: p1Name, birthDate: p1BirthDate, gender: p1Gender } : null,
+      partner2: regGender === 'Casal' ? { name: p2Name, birthDate: p2BirthDate, gender: p2Gender } : null,
       ageConsent: regAgeConsent
     };
 
@@ -604,6 +614,9 @@ export const AuthModal = () => {
                       <Users className="w-4 h-4" /> Dados e Sexo de Ambos os Integrantes:
                     </span>
                   </div>
+                  <p className="text-[10px] text-[var(--c-text-faint)] -mt-2">
+                    Pode usar o nome ou um apelido de cada integrante, para preservar a privacidade. A data de nascimento é usada para calcular a idade automaticamente.
+                  </p>
 
                   {/* Preset Quick Sex Combination Shortcuts */}
                   <div className="flex gap-1.5 text-[10px]">
@@ -651,19 +664,16 @@ export const AuthModal = () => {
                         type="text"
                         value={p1Name}
                         onChange={e => setP1Name(stripEmojis(e.target.value))}
-                        placeholder="Nome (Pessoa 1)"
+                        placeholder="Nome ou apelido"
                         className="col-span-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                       />
                       <input
-                        type="number"
-                        inputMode="numeric"
-                        min={MIN_AGE}
-                        max={MAX_AGE}
-                        value={p1Age}
-                        onChange={e => setP1Age(sanitizeAgeInput(e.target.value))}
-                        onBlur={e => setP1Age(clampAge(e.target.value))}
-                        placeholder="Idade"
-                        className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500"
+                        type="date"
+                        min={MIN_BIRTH_DATE}
+                        max={MAX_BIRTH_DATE}
+                        value={p1BirthDate}
+                        onChange={e => setP1BirthDate(e.target.value)}
+                        className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-[11px] text-[var(--c-text)] focus:outline-none focus:border-rose-500"
                       />
                       <select
                         value={p1Gender}
@@ -683,19 +693,16 @@ export const AuthModal = () => {
                         type="text"
                         value={p2Name}
                         onChange={e => setP2Name(stripEmojis(e.target.value))}
-                        placeholder="Nome (Pessoa 2)"
+                        placeholder="Nome ou apelido"
                         className="col-span-1 bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2.5 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                       />
                       <input
-                        type="number"
-                        inputMode="numeric"
-                        min={MIN_AGE}
-                        max={MAX_AGE}
-                        value={p2Age}
-                        onChange={e => setP2Age(sanitizeAgeInput(e.target.value))}
-                        onBlur={e => setP2Age(clampAge(e.target.value))}
-                        placeholder="Idade"
-                        className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-xs text-[var(--c-text)] focus:outline-none focus:border-rose-500"
+                        type="date"
+                        min={MIN_BIRTH_DATE}
+                        max={MAX_BIRTH_DATE}
+                        value={p2BirthDate}
+                        onChange={e => setP2BirthDate(e.target.value)}
+                        className="bg-[var(--c-surface)] border border-[var(--c-border)] rounded-lg py-1.5 px-2 text-[11px] text-[var(--c-text)] focus:outline-none focus:border-rose-500"
                       />
                       <select
                         value={p2Gender}
@@ -710,7 +717,8 @@ export const AuthModal = () => {
               ) : (
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1">Nome ou Apelido</label>
+                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-0.5">Nome *</label>
+                    <p className="text-[10px] text-[var(--c-text-faint)] mb-1">Pode ser um apelido, para preservar sua privacidade.</p>
                     <input
                       type="text"
                       value={regName}
@@ -720,9 +728,10 @@ export const AuthModal = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1 flex items-center gap-1">
-                      <Cake className="w-3.5 h-3.5 text-rose-400" /> Nascimento
+                    <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-0.5 flex items-center gap-1">
+                      <Cake className="w-3.5 h-3.5 text-rose-400" /> Nascimento *
                     </label>
+                    <p className="text-[10px] text-[var(--c-text-faint)] mb-1">Usada para calcular sua idade automaticamente.</p>
                     <input
                       type="date"
                       min={MIN_BIRTH_DATE}
@@ -766,8 +775,8 @@ export const AuthModal = () => {
                   <input
                     type="text"
                     value={regUsername}
-                    onChange={(e) => setRegUsername(e.target.value)}
-                    placeholder="ex: @lucas"
+                    onChange={(e) => setRegUsername(e.target.value.replace(/^@+/, '').replace(/@/g, '_').replace(/\s+/g, '_').toLowerCase())}
+                    placeholder="ex: lucas"
                     className="w-full bg-[var(--c-surface-3)] border border-[var(--c-border)] rounded-xl py-2 px-3 text-xs text-[var(--c-text)] placeholder-[var(--c-text-faint)] focus:outline-none focus:border-rose-500"
                   />
                 </div>
@@ -786,7 +795,7 @@ export const AuthModal = () => {
               {/* Location Field */}
               <div>
                 <label className="block text-xs font-semibold text-[var(--c-text-secondary)] mb-1 flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-rose-400" /> Sua Localização
+                  <MapPin className="w-3.5 h-3.5 text-rose-400" /> Sua Localização *
                 </label>
                 <CitySelect
                   value={regLocation}

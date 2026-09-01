@@ -119,7 +119,7 @@ export const MatchTab = ({ candidates, onLike, onSelectUser, hasActiveFilters, o
             </span>
           </h3>
           <p className="text-xs text-gray-200 flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5 text-rose-400" /> {u.location || 'Brasil'}
+            <MapPin className="w-3.5 h-3.5 text-rose-400" /> {u.location || 'Não informado'}
           </p>
           {u.bio && (
             <p className="text-xs text-gray-100 line-clamp-2 leading-relaxed">{u.bio}</p>

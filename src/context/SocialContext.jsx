@@ -5,6 +5,15 @@ import { useAuth } from './AuthContext';
 
 const SocialContext = createContext();
 
+const mapComment = (c) => ({
+  id: c.id,
+  userId: c.user_id,
+  userName: c.profiles?.name || 'Usuário',
+  userAvatar: c.profiles?.avatar_url || '',
+  text: c.text,
+  createdAt: timeAgo(c.created_at)
+});
+
 const mapPost = (p) => ({
   id: p.id,
   userId: p.user_id,
@@ -16,14 +25,7 @@ const mapPost = (p) => ({
   comments: (p.comments || [])
     .slice()
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-    .map(c => ({
-      id: c.id,
-      userId: c.user_id,
-      userName: c.profiles?.name || 'Usuário',
-      userAvatar: c.profiles?.avatar_url || '',
-      text: c.text,
-      createdAt: timeAgo(c.created_at)
-    }))
+    .map(mapComment)
 });
 
 export const SocialProvider = ({ children }) => {
@@ -61,6 +63,22 @@ export const SocialProvider = ({ children }) => {
   }, [currentUser]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
+
+  // Posts (and their comments) are fetched once above and then kept in
+  // memory — there's no polling/realtime for comments, so a post opened
+  // from a "commented on your post" notification would otherwise still
+  // show whatever comments existed at that one-time fetch, missing the
+  // very comment that triggered the notification. Called from the
+  // notification's click handler to pull just that post's comments fresh.
+  const refreshPostComments = useCallback(async (postId) => {
+    const { data } = await supabase
+      .from('comments')
+      .select('id, user_id, text, created_at, profiles ( name, avatar_url )')
+      .eq('post_id', postId);
+    if (!data) return;
+    const comments = data.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map(mapComment);
+    setRawPosts(prev => prev.map(p => p.id === postId ? { ...p, comments } : p));
+  }, []);
 
   const fetchContacts = useCallback(async () => {
     if (!currentUser) {
@@ -465,6 +483,7 @@ export const SocialProvider = ({ children }) => {
     <SocialContext.Provider value={{
       posts,
       postsLoading,
+      refreshPostComments,
       friendships,
       messages,
       contactsLoading,
