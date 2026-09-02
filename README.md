@@ -33,6 +33,14 @@ conta Stripe).
   usuário via índice único). Ninguém, nem por consulta direta ao banco,
   consegue ver quem votou em quê — os totais só saem da função
   `poll_results()` (agregado, sem expor linha por usuário)
+- **Stories** (`stories` table) — foto que expira em 24h (`expires_at`),
+  com a audiência escolhida por quem posta: "Todos" ou "Apenas amigos"
+  (`visibility`, checado na RLS na hora da leitura, não no momento de
+  postar). Respeita bloqueio de usuário como posts/comentários já fazem.
+  Marca visualização por usuário (`story_views`) para o anel
+  visto/não-visto e a contagem de visualizações de quem postou; sem
+  limpeza automática agendada — cada novo story do próprio usuário varre
+  e apaga os stories vencidos dele (best-effort, sem cron job)
 - **Chat direto** — qualquer pessoa pode receber mensagens, mas só membros
   PRÓ podem iniciar conversas e enviar fotos
 - **Salas de Grupo VIP** — bate-papos coletivos com regras de entrada

@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Camera as CameraIcon, Check, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, Camera as CameraIcon, Check, Trash2, AlertTriangle, Loader2, Image as ImageIcon } from 'lucide-react';
 
 // Full-screen in-app camera (not the OS camera app) so we can offer a
 // camera picker when the device has more than one, and let someone shoot
 // several photos in a row before handing them all back at once. Built with
 // getUserMedia rather than <input capture> — a native capture input only
 // ever returns a single photo per invocation and can't list cameras.
-export const CameraCapture = ({ onCapture, onClose }) => {
+//
+// `onUseGallery` is optional — pass it to also show a "Galeria" escape
+// hatch in the top bar for a flow that opens straight into the camera but
+// still lets someone bail out to picking a file instead (e.g. stories).
+// Callers that don't pass it (the regular post/chat composers) are
+// unaffected.
+export const CameraCapture = ({ onCapture, onClose, onUseGallery }) => {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [devices, setDevices] = useState([]);
@@ -126,9 +132,19 @@ export const CameraCapture = ({ onCapture, onClose }) => {
 
         {/* Top bar */}
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-4 pt-[max(1rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/70 to-transparent">
-          <button onClick={handleClose} className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleClose} className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition">
+              <X className="w-5 h-5" />
+            </button>
+            {onUseGallery && (
+              <button
+                onClick={() => { stopStream(); onUseGallery(); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/40 text-white text-xs font-semibold hover:bg-black/60 transition"
+              >
+                <ImageIcon className="w-4 h-4" /> Galeria
+              </button>
+            )}
+          </div>
 
           {devices.length > 1 && (
             <select

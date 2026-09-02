@@ -4,6 +4,7 @@ import { useSocial } from '../../context/SocialContext';
 import { useToast } from '../../context/ToastContext';
 import { CreatePost } from './CreatePost';
 import { PostCard } from './PostCard';
+import { StoriesBar } from './StoriesBar';
 import { isWithinRadius } from '../../lib/geo';
 import { Users, Sparkles, Rss, Heart, Loader2 } from 'lucide-react';
 
@@ -98,6 +99,8 @@ export const Feed = ({ onOpenChatWithUser, onSelectUser, highlightPostId, highli
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto pb-12">
+      <StoriesBar />
+
       {/* Post Creator Box */}
       <CreatePost />
 
