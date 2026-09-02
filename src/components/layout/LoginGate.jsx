@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
-  Heart, LogIn, MessageSquare, Flame, ShieldCheck, Sparkles, HeartHandshake
+  Heart, LogIn, MessageSquare, Flame, ShieldCheck, Sparkles, HeartHandshake, Camera
 } from 'lucide-react';
 
 // Fixed (not randomized per-render) so embers don't jump around on
@@ -38,6 +38,11 @@ const FEATURES = [
     icon: HeartHandshake,
     title: 'Casais Bem-vindos',
     desc: 'Um espaço pensado também para casais em busca de novas conexões.'
+  },
+  {
+    icon: Camera,
+    title: 'Stories de 24 Horas',
+    desc: 'Compartilhe fotos e vídeos rápidos que ficam disponíveis por 24 horas para seus amigos.'
   },
   {
     icon: ShieldCheck,

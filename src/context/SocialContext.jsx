@@ -47,6 +47,9 @@ export const SocialProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
 
+  const [stories, setStories] = useState([]);
+  const [storiesLoading, setStoriesLoading] = useState(true);
+
   // --- FETCHING ---
   // Depends on currentUser so it re-runs when login finishes — posts RLS
   // requires auth.uid(), and SocialProvider mounts (and fires this once)
@@ -84,6 +87,101 @@ export const SocialProvider = ({ children }) => {
     const comments = data.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at)).map(mapComment);
     setRawPosts(prev => prev.map(p => p.id === postId ? { ...p, comments } : p));
   }, []);
+
+  // --- STORIES ---
+  // RLS on stories already filters to "not expired" isn't enforced there
+  // (that's this query's `.gt('expires_at', ...)` instead — the policy only
+  // gates *audience*, not the 24h TTL, so an author could still fetch a
+  // past story of their own if some future screen needed that).
+  // The story_views join rides RLS the same way: for a story that isn't
+  // mine, it returns 0 or 1 rows — just *my own* view, if any (that's all
+  // its SELECT policy allows a non-author to see) — which is exactly
+  // enough to compute `viewedByMe`. For my own stories, RLS instead lets
+  // the whole viewer list through, which the "quem viu" count can use.
+  const fetchStories = useCallback(async () => {
+    setStoriesLoading(true);
+    const { data } = await supabase
+      .from('stories')
+      .select('id, user_id, media_url, visibility, created_at, expires_at, story_views ( viewer_id )')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: true });
+    setStories((data || []).map(s => ({
+      id: s.id,
+      userId: s.user_id,
+      mediaUrl: s.media_url,
+      visibility: s.visibility,
+      createdAtRaw: s.created_at,
+      expiresAtRaw: s.expires_at,
+      viewerCount: (s.story_views || []).length,
+      viewedByMe: currentUser ? (s.story_views || []).some(v => v.viewer_id === currentUser.id) : false
+    })));
+    setStoriesLoading(false);
+  }, [currentUser]);
+
+  useEffect(() => { fetchStories(); }, [fetchStories]);
+
+  // Light polling (same pattern as contacts/notifications below) so new
+  // stories from friends show up without a full reload — no realtime here.
+  useEffect(() => {
+    const interval = setInterval(fetchStories, 60000);
+    return () => clearInterval(interval);
+  }, [fetchStories]);
+
+  const createStory = async (mediaUrl, visibility) => {
+    if (!currentUser) return { success: false, message: 'Faça login para postar um story.' };
+
+    // Best-effort: sweep this user's own already-expired stories so rows
+    // (and the fact that they show up in fetches) don't pile up forever
+    // without needing a scheduled job.
+    await supabase.from('stories').delete().eq('user_id', currentUser.id).lt('expires_at', new Date().toISOString());
+
+    const { data, error } = await supabase
+      .from('stories')
+      .insert({ user_id: currentUser.id, media_url: mediaUrl, visibility })
+      .select()
+      .single();
+    if (error) return { success: false, message: 'Não foi possível publicar o story.' };
+
+    setStories(prev => [...prev, {
+      id: data.id, userId: data.user_id, mediaUrl: data.media_url, visibility: data.visibility,
+      createdAtRaw: data.created_at, expiresAtRaw: data.expires_at, viewerCount: 0, viewedByMe: false
+    }]);
+    return { success: true };
+  };
+
+  // Only readable by the story's own author (RLS) — returns [] for anyone
+  // else's story rather than an error, so it's safe to call speculatively.
+  const fetchStoryViewers = async (storyId) => {
+    const { data } = await supabase
+      .from('story_views')
+      .select('viewer_id, viewed_at, profiles ( name, username, avatar_url )')
+      .eq('story_id', storyId)
+      .order('viewed_at', { ascending: false });
+    return (data || []).map(v => ({
+      id: v.viewer_id,
+      name: v.profiles?.name || 'Usuário',
+      username: v.profiles?.username || '',
+      avatar: v.profiles?.avatar_url || '',
+      viewedAt: v.viewed_at
+    }));
+  };
+
+  const deleteStory = async (storyId) => {
+    setStories(prev => prev.filter(s => s.id !== storyId));
+    await supabase.from('stories').delete().eq('id', storyId);
+  };
+
+  // Fire-and-forget: the viewer's own UI already flips optimistically, and
+  // this is idempotent (unique constraint + ignoreDuplicates) so a retry
+  // or double-call never creates a second view.
+  const markStoryViewed = (storyId) => {
+    if (!currentUser) return;
+    setStories(prev => prev.map(s => (s.id === storyId ? { ...s, viewedByMe: true } : s)));
+    supabase
+      .from('story_views')
+      .upsert({ story_id: storyId, viewer_id: currentUser.id }, { onConflict: 'story_id,viewer_id', ignoreDuplicates: true })
+      .then(() => {});
+  };
 
   const fetchContacts = useCallback(async () => {
     if (!currentUser) {
@@ -559,6 +657,13 @@ export const SocialProvider = ({ children }) => {
       postsLoading,
       fetchPosts,
       refreshPostComments,
+      stories,
+      storiesLoading,
+      fetchStories,
+      createStory,
+      deleteStory,
+      markStoryViewed,
+      fetchStoryViewers,
       friendships,
       messages,
       contactsLoading,

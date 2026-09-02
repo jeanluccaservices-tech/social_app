@@ -258,8 +258,10 @@ export const CreatePost = () => {
         Não são permitidos conteúdos com menores de idade, crimes sexuais, drogas, venda de conteúdos ou outras ilegalidades. Ao publicar, você é o único responsável pelo conteúdo.
       </p>
 
-      {/* Action Footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-[var(--c-border-soft)]">
+      {/* Action Footer — wraps instead of squeezing "Publicar" half off
+          screen on narrow phones once Galeria+Câmera+Enquete don't fit
+          on one line anymore. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--c-border-soft)]">
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -294,7 +296,7 @@ export const CreatePost = () => {
         <button
           onClick={handleSubmit}
           disabled={posting || isUploading}
-          className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/30 transition transform hover:scale-105 active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
+          className="flex-shrink-0 flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/30 transition transform hover:scale-105 active:scale-95 disabled:opacity-60 disabled:pointer-events-none"
         >
           {posting || isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
           <span>{posting ? 'Publicando...' : isUploading ? 'Enviando fotos...' : 'Publicar'}</span>
